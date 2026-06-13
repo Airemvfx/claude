@@ -8,7 +8,8 @@
   <title>FRACTAL AUDIO VISUALIZER</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}
+    html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:manipulation}
+    #c{touch-action:none}
     #c{display:block;width:100%;height:100%}
     #splash{
       position:fixed;inset:0;
@@ -345,17 +346,21 @@ requestAnimationFrame(t=>{prev=t;requestAnimationFrame(loop);});
 
 // ── SPLASH ───────────────────────────────────────────────────────────────────
 const splash=document.getElementById('splash');
+let started=false;
 function begin(e){
-  if(e.type==='touchend') e.preventDefault();
-  startAudio();
+  if(started)return; started=true;
+  if(e&&e.cancelable) e.preventDefault();
+  try{startAudio();}catch(err){console.warn('audio:',err);}
   splash.style.transition='opacity .6s';
   splash.style.opacity='0';
   setTimeout(()=>splash.style.display='none',650);
   const hint=document.getElementById('hint');
-  setTimeout(()=>{ hint.style.opacity='0'; setTimeout(()=>hint.remove(),3000); },4000);
+  if(hint) setTimeout(()=>{hint.style.opacity='0';setTimeout(()=>hint.remove(),3000);},4000);
 }
-splash.addEventListener('click',begin);
-splash.addEventListener('touchend',begin,{passive:false});
+// touchstart fires immediately — no 300 ms delay, works on iOS/Android
+splash.addEventListener('touchstart', begin, {passive:false});
+// mouse fallback for desktop
+splash.addEventListener('click', begin);
 
 // ── INPUT — ORBIT ─────────────────────────────────────────────────────────────
 gc.addEventListener('mousedown',e=>{dragging=true;prevX=e.clientX;prevY=e.clientY;});
