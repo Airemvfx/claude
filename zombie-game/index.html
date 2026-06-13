@@ -12,7 +12,7 @@
     #c{touch-action:none}
     #c{display:block;width:100%;height:100%}
     #splash{
-      position:fixed;inset:0;
+      position:fixed;inset:0;z-index:999;
       background:rgba(0,4,8,.88);
       display:flex;flex-direction:column;align-items:center;justify-content:center;
       cursor:pointer;user-select:none;touch-action:auto;
@@ -357,10 +357,10 @@ function begin(e){
   const hint=document.getElementById('hint');
   if(hint) setTimeout(()=>{hint.style.opacity='0';setTimeout(()=>hint.remove(),3000);},4000);
 }
-// touchstart fires immediately — no 300 ms delay, works on iOS/Android
-splash.addEventListener('touchstart', begin, {passive:false});
-// mouse fallback for desktop
-splash.addEventListener('click', begin);
+// Listen on document so ANY tap anywhere works — most reliable across
+// all mobile browsers, iframes, and WebView environments
+document.addEventListener('pointerdown', begin, {once:true});
+document.addEventListener('touchstart',  begin, {passive:false, once:true});
 
 // ── INPUT — ORBIT ─────────────────────────────────────────────────────────────
 gc.addEventListener('mousedown',e=>{dragging=true;prevX=e.clientX;prevY=e.clientY;});
