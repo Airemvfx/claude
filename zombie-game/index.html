@@ -5,496 +5,388 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>☠ DEAD ZONE 3D</title>
+  <title>FRACTAL AUDIO VISUALIZER</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
-    canvas { position: absolute; top: 0; left: 0; display: block; }
-    #hud { z-index: 2; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}
+    #c{display:block;width:100%;height:100%}
+    #splash{
+      position:fixed;inset:0;
+      background:rgba(0,4,8,.88);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      cursor:pointer;user-select:none;touch-action:auto;
+      font-family:'Courier New',monospace;color:#fff;
+    }
+    .t1{font-size:clamp(28px,11vw,64px);letter-spacing:.15em;
+        color:#00ffcc;text-shadow:0 0 40px #00ffcc,0 0 80px #00ffcc44;line-height:1.1;text-align:center}
+    .t2{margin-top:10px;font-size:clamp(11px,3.5vw,18px);color:#446677;letter-spacing:.2em}
+    .tap{margin-top:44px;font-size:clamp(15px,4.5vw,24px);color:#fff;
+         animation:pulse 1.6s ease-in-out infinite;letter-spacing:.1em}
+    @keyframes pulse{0%,100%{opacity:.3;text-shadow:none}50%{opacity:1;text-shadow:0 0 20px #00ffcc}}
+    #hint{position:fixed;bottom:16px;width:100%;text-align:center;
+          font-family:'Courier New',monospace;font-size:11px;color:#223344;
+          pointer-events:none;letter-spacing:.12em;transition:opacity 3s}
   </style>
 </head>
 <body>
-<canvas id="gc"></canvas>
-<canvas id="hud"></canvas>
+<canvas id="c"></canvas>
+<div id="splash">
+  <div class="t1">FRACTAL<br>AUDIO VIZ</div>
+  <div class="t2">3D  PARAMETRIC  VISUALIZER</div>
+  <div class="tap">▶  TAP  TO  BEGIN</div>
+</div>
+<div id="hint">DRAG TO ORBIT  •  PINCH TO ZOOM</div>
+
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
 'use strict';
 
-// ── RENDERER / SCENE / CAMERA ────────────────────────────────────────────────
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x040d06);
-scene.fog = new THREE.FogExp2(0x040d06, 0.028);
+// ── MATH / NOISE ─────────────────────────────────────────────────────────────
+// Smooth organic noise via layered trig (cheaper than Perlin, looks great)
+function smooth(x,y,z,t){
+  let v=0,a=.5,f=1;
+  for(let i=0;i<4;i++){
+    v+=Math.sin(x*f*2.1+t*.22+i*1.7)*Math.cos(y*f*1.9+t*.17+i*2.3)*Math.sin(z*f*2.3+t*.19+i*1.1)*a;
+    a*=.5;f*=2.1;
+  }
+  return v;
+}
+// Domain-warped version for fractal complexity
+function warp(x,y,z,t){
+  const q=smooth(x,y,z,t), r=smooth(x+1.7,y+9.2,z+.5,t);
+  return smooth(x+1.1*q, y+1.1*r, z+1.1*(q+r)*.5, t);
+}
 
-const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 120);
+// ── RENDERER / SCENE ─────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x000508);
+scene.fog=new THREE.FogExp2(0x000508,.03);
 
-const gc = document.getElementById('gc');
-const renderer = new THREE.WebGLRenderer({ canvas: gc, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-renderer.setSize(innerWidth, innerHeight);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.01,400);
+camera.position.set(0,0,4.5);
 
-const hud = document.getElementById('hud');
-const hx  = hud.getContext('2d');
-hud.width = innerWidth; hud.height = innerHeight;
+const gc=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas:gc,antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
 
-window.addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight;
+window.addEventListener('resize',()=>{
+  renderer.setSize(innerWidth,innerHeight);
+  camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  hud.width = innerWidth; hud.height = innerHeight;
 });
 
-// ── LIGHTING ────────────────────────────────────────────────────────────────
-scene.add(new THREE.AmbientLight(0x223322, 1.0));
-const moon = new THREE.DirectionalLight(0x8899bb, 1.4);
-moon.position.set(8, 20, 5);
-scene.add(moon);
-const glow = new THREE.PointLight(0x33ff55, 0.5, 14);
-scene.add(glow);
+// ── LIGHTING ─────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x060a10,3));
+const L1=new THREE.PointLight(0x00ffcc,4,18); scene.add(L1);
+const L2=new THREE.PointLight(0xff44cc,2,14); L2.position.set(-3,2,-2); scene.add(L2);
+const L3=new THREE.PointLight(0x4444ff,1.5,12); L3.position.set(2,-2,2); scene.add(L3);
 
-// ── GROUND ──────────────────────────────────────────────────────────────────
-const gGeo = new THREE.PlaneGeometry(120, 120, 40, 40);
-{ const p = gGeo.attributes.position; for (let i=0;i<p.count;i++) p.setZ(i,(Math.random()-.5)*.1); gGeo.computeVertexNormals(); }
-const groundMesh = new THREE.Mesh(gGeo, new THREE.MeshLambertMaterial({ color: 0x182814 }));
-groundMesh.rotation.x = -Math.PI/2;
-scene.add(groundMesh);
-scene.add(new THREE.GridHelper(120, 40, 0x1c2a18, 0x172214));
-
-// Decorative rubble/crates
-for (let i=0;i<30;i++) {
-  const w=.4+Math.random()*.9, h=.3+Math.random()*1.8, d=.4+Math.random()*.9;
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-    new THREE.MeshLambertMaterial({ color: [0x1a2a15,0x22331a,0x1e2e18,0x15201a][i%4] }));
-  let x,z; do { x=(Math.random()-.5)*100; z=(Math.random()-.5)*100; } while(Math.hypot(x,z)<6);
-  m.position.set(x, h/2, z);
-  m.rotation.y = Math.random()*Math.PI;
-  scene.add(m);
-}
-
-// ── MESH HELPERS ────────────────────────────────────────────────────────────
-function bx(w,h,d,color,emissive=0) {
-  return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-    new THREE.MeshLambertMaterial({color, emissive}));
-}
-
-// Player mesh — default faces -Z (gun arm at +X side pointing -Z)
-function makePlayerMesh() {
-  const g = new THREE.Group();
-  const ll=bx(.28,.72,.28,0x1a3a99); ll.position.set(-.22,.36,0); g.add(ll);
-  const rl=bx(.28,.72,.28,0x1a3a99); rl.position.set( .22,.36,0); g.add(rl);
-  const t =bx(.84,1.02,.44,0x2255cc); t.position.y=1.1; g.add(t);
-  const h =bx(.52,.52,.52,0xcc9966); h.position.y=1.86; g.add(h);
-  // gun arm + barrel
-  const arm=bx(.18,.72,.18,0x1a3a99); arm.position.set(.52,1.02,0); g.add(arm);
-  const gun=bx(.1,.1,.7,0x1a1a1a); gun.position.set(.52,1.1,-.42); g.add(gun);
-  return g;
-}
-
-// Zombie meshes — hunched, arms forward, faces -Z by default
-function makeZombieMesh(type) {
-  const g = new THREE.Group();
-  const sc = type===2?1.45:type===1?.8:1.0;
-  const bc = [0x3a7a2e,0x7a3030,0x2e4a7a][type];
-  const s = sc;
-  // Legs (stumble offset)
-  const ll=bx(.3*s,.68*s,.3*s,bc); ll.position.set(-.2*s,.34*s,.05*s); ll.rotation.z=.14; g.add(ll);
-  const rl=bx(.3*s,.68*s,.3*s,bc); rl.position.set( .2*s,.34*s,-.05*s); rl.rotation.z=-.14; g.add(rl);
-  // Torso (hunched forward)
-  const t=bx(.9*s,1.0*s,.48*s,bc); t.position.y=.98*s; t.rotation.x=.28; g.add(t);
-  // Arms outstretched forward
-  const la=bx(.22*s,.82*s,.22*s,bc); la.position.set(-.6*s,.94*s,-.28*s); la.rotation.z=.75; la.rotation.x=.6; g.add(la);
-  const ra=bx(.22*s,.82*s,.22*s,bc); ra.position.set( .6*s,.94*s,-.28*s); ra.rotation.z=-.75; ra.rotation.x=.6; g.add(ra);
-  // Head (tilted)
-  const h=bx(.58*s,.54*s,.54*s,bc); h.position.set(0,1.64*s,-.12*s); h.rotation.x=.32; g.add(h);
-  // Eyes (emissive red)
-  const eM=new THREE.MeshBasicMaterial({color:0xff2200});
-  const eG=new THREE.BoxGeometry(.11*s,.09*s,.06*s);
-  const le=new THREE.Mesh(eG,eM); le.position.set(-.15*s,1.65*s,-.38*s); g.add(le);
-  const re=new THREE.Mesh(eG,eM); re.position.set( .15*s,1.65*s,-.38*s); g.add(re);
-  return g;
-}
-
-// ── STATE ───────────────────────────────────────────────────────────────────
-const S = {MENU:0,PLAY:1,OVER:2};
-let state = S.MENU;
-
-let P={};
-const zombies=[], bullets=[], parts=[], pickups=[];
-let score=0, wave=0, hs=+localStorage.getItem('dz3_hs')||0;
-let zToSpawn=0, zDelay=0, zTimer=0, waveDone=false, waveTimer=0;
-let flash=0, frame=0, camX=0, camZ=0;
-
-// ── ZOMBIE TYPES ─────────────────────────────────────────────────────────────
-const ZT=[
-  {r:.58,spd:.068,hp:60, dmg:10,pts:10,mw:1,type:0},
-  {r:.44,spd:.13, hp:35, dmg:8, pts:20,mw:2,type:1},
-  {r:.88,spd:.04, hp:220,dmg:20,pts:50,mw:4,type:2},
-];
-
-function mkPlayer() {
-  if (P.mesh) scene.remove(P.mesh);
-  P={mesh:makePlayerMesh(),x:0,z:0,r:.72,spd:.15,hp:100,maxHp:100,
-     ang:0,fc:0,fr:18,dmg:40,inv:0,kills:0};
-  scene.add(P.mesh);
-}
-
-// ── WAVE ────────────────────────────────────────────────────────────────────
-function nextWave() {
-  wave++;
-  zToSpawn=5+wave*3; zDelay=Math.max(15,60-wave*3); zTimer=30;
-  waveDone=false; waveTimer=0;
-}
-
-function spawnZombie() {
-  const el=ZT.filter(t=>t.mw<=wave);
-  const wts=el.map((_,i)=>[3,1.5,.5][i]??0.5);
-  let r=Math.random()*wts.reduce((a,b)=>a+b,0), tp=el[0];
-  for(let i=0;i<el.length;i++){r-=wts[i];if(r<=0){tp=el[i];break;}}
-  const a=Math.random()*Math.PI*2, d=22+Math.random()*5;
-  const sx=P.x+Math.cos(a)*d, sz=P.z+Math.sin(a)*d;
-  const hp=tp.hp+wave*6;
-  const mesh=makeZombieMesh(tp.type);
-  mesh.position.set(sx,0,sz);
-  scene.add(mesh);
-  zombies.push({mesh,x:sx,z:sz,r:tp.r*(tp.type===2?1.4:1),
-    spd:tp.spd+wave*.003,hp,mhp:hp,dmg:tp.dmg,pts:tp.pts,
-    ang:0,wob:Math.random()*Math.PI*2,ws:.04+Math.random()*.04,
-    stun:0,type:tp.type});
-}
-
-// ── BULLETS ─────────────────────────────────────────────────────────────────
-const bGeo=new THREE.SphereGeometry(.13,5,4);
-const bMat=new THREE.MeshBasicMaterial({color:0xffee44});
-
-function fireBullet() {
-  if(P.fc>0||!zombies.length) return;
-  let nearest=zombies[0],nd=Infinity;
-  for(const z of zombies){const d=Math.hypot(z.x-P.x,z.z-P.z);if(d<nd){nd=d;nearest=z;}}
-  const ang=Math.atan2(nearest.z-P.z,nearest.x-P.x);
-  P.ang=ang;
-  P.mesh.rotation.y=-ang-Math.PI/2;
-  const a2=ang+(Math.random()-.5)*.05;
-  const m=new THREE.Mesh(bGeo,bMat);
-  m.position.set(P.x+Math.cos(ang)*(P.r+.1),1.1,P.z+Math.sin(ang)*(P.r+.1));
-  scene.add(m);
-  bullets.push({mesh:m,x:m.position.x,z:m.position.z,vx:Math.cos(a2)*.55,vz:Math.sin(a2)*.55,life:60});
-  P.fc=P.fr;
-}
-
-// ── PARTICLES ───────────────────────────────────────────────────────────────
-const MAX_P=80;
-const pGeo=new THREE.SphereGeometry(.07,3,3);
-
-function blood(x,z,n=8) {
-  for(let i=0;i<n;i++){
-    if(parts.length>=MAX_P) break;
-    const a=Math.random()*Math.PI*2, s=.02+Math.random()*.12;
-    const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:0xcc1111,transparent:true}));
-    m.position.set(x,.4+Math.random()*.4,z);
-    scene.add(m);
-    parts.push({mesh:m,vx:Math.cos(a)*s,vy:.05+Math.random()*.1,vz:Math.sin(a)*s,life:30+~~(Math.random()*40),ml:70});
+// ── STAR FIELD ───────────────────────────────────────────────────────────────
+{
+  const sg=new THREE.BufferGeometry(), sp=new Float32Array(4000*3);
+  for(let i=0;i<4000;i++){
+    const r=60+Math.random()*140,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);
+    sp[i*3]=Math.sin(p)*Math.cos(t)*r; sp[i*3+1]=Math.cos(p)*r; sp[i*3+2]=Math.sin(p)*Math.sin(t)*r;
   }
+  sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
+  scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0x99aabb,size:.25})));
 }
 
-const pkGeo=new THREE.BoxGeometry(.55,.55,.55);
-function mkPickup(x,z) {
-  if(Math.random()>.2) return;
-  const type=Math.random()<.65?'hp':'spd';
-  const m=new THREE.Mesh(pkGeo,new THREE.MeshBasicMaterial({color:type==='hp'?0xff4444:0x44aaff,transparent:true,opacity:.92}));
-  m.position.set(x,.5,z);
-  scene.add(m);
-  pickups.push({mesh:m,x,z,type,life:360,pulse:0,r:.6});
+// ── MAIN BLOB ────────────────────────────────────────────────────────────────
+const SEGS=36;
+const bGeo=new THREE.SphereGeometry(1,SEGS,SEGS);
+const origPos=bGeo.attributes.position.array.slice();
+const bPos=bGeo.attributes.position;
+
+const bMat=new THREE.MeshPhongMaterial({color:0x00ffcc,emissive:0x003322,shininess:160,specular:0x55ffee});
+const blob=new THREE.Mesh(bGeo,bMat);
+scene.add(blob);
+
+// Wireframe on same geometry (auto-follows morph)
+const wMat=new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true,transparent:true,opacity:.16,blending:THREE.AdditiveBlending});
+scene.add(new THREE.Mesh(bGeo,wMat));
+
+// Halo glow layers (same geo, larger scale, additive back-faces)
+const haloMats=[];
+for(let i=0;i<4;i++){
+  const hm=new THREE.MeshBasicMaterial({color:0x00ffcc,transparent:true,opacity:.04-i*.005,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false});
+  haloMats.push(hm);
+  const h=new THREE.Mesh(bGeo,hm);
+  h.scale.setScalar(1.1+i*.1);
+  scene.add(h);
 }
 
-// ── INPUT ───────────────────────────────────────────────────────────────────
-const keys={};
-window.addEventListener('keydown',e=>keys[e.key]=true);
-window.addEventListener('keyup',  e=>keys[e.key]=false);
-const joy={on:false,id:-1,bx:0,by:0,tx:0,ty:0,dx:0,dy:0,mr:55};
+// ── SATELLITE BLOBS ──────────────────────────────────────────────────────────
+const SATS=3;
+const sats=[];
+for(let i=0;i<SATS;i++){
+  const sg=new THREE.SphereGeometry(.38,22,22);
+  const sorig=sg.attributes.position.array.slice();
+  const sm=new THREE.MeshPhongMaterial({color:0xff44cc,emissive:0x220011,shininess:90});
+  const sw=new THREE.MeshBasicMaterial({color:0xff44cc,wireframe:true,transparent:true,opacity:.22,blending:THREE.AdditiveBlending});
+  const mesh=new THREE.Mesh(sg,sm), wire=new THREE.Mesh(sg,sw);
+  scene.add(mesh); scene.add(wire);
+  sats.push({mesh,wire,geo:sg,orig:sorig,phase:(i/SATS)*Math.PI*2,orb:2.3+i*.45,spd:.38+i*.18,tilt:.3+i*.4});
+}
 
-// ── UPDATE ──────────────────────────────────────────────────────────────────
-function lerp(a,b,t){return a+(b-a)*t;}
+// ── PARTICLES ────────────────────────────────────────────────────────────────
+const NP=1600;
+const ptGeo=new THREE.BufferGeometry();
+const ptPos=new Float32Array(NP*3);
+const ptVel=new Float32Array(NP*3);
+for(let i=0;i<NP;i++){
+  const r=.6+Math.random()*2,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);
+  const nx=Math.sin(p)*Math.cos(t),ny=Math.cos(p),nz=Math.sin(p)*Math.sin(t);
+  ptPos[i*3]=nx*r; ptPos[i*3+1]=ny*r; ptPos[i*3+2]=nz*r;
+  const s=.0008+Math.random()*.0035;
+  ptVel[i*3]=nx*s+(Math.random()-.5)*.0015;
+  ptVel[i*3+1]=ny*s+(Math.random()-.5)*.0015;
+  ptVel[i*3+2]=nz*s+(Math.random()-.5)*.0015;
+}
+ptGeo.setAttribute('position',new THREE.BufferAttribute(ptPos,3));
+const ptMat=new THREE.PointsMaterial({color:0x00ffcc,size:.022,transparent:true,opacity:.7,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+const pts=new THREE.Points(ptGeo,ptMat);
+scene.add(pts);
 
-function update() {
-  if(state!==S.PLAY) return;
-  frame++;
+// ── RING STRUCTURE ───────────────────────────────────────────────────────────
+// Animated torus that reacts to mid frequencies
+const tGeo=new THREE.TorusGeometry(2.2,.02,8,120);
+const tMat=new THREE.MeshBasicMaterial({color:0x00ffcc,transparent:true,opacity:.2,blending:THREE.AdditiveBlending});
+const ring1=new THREE.Mesh(tGeo,tMat); scene.add(ring1);
+const ring2=new THREE.Mesh(new THREE.TorusGeometry(2.6,.015,8,120),
+  new THREE.MeshBasicMaterial({color:0xff44cc,transparent:true,opacity:.15,blending:THREE.AdditiveBlending}));
+ring2.rotation.x=Math.PI/3;
+scene.add(ring2);
 
-  // Movement
-  P.x+=joy.dx*P.spd; P.z+=joy.dy*P.spd;
-  if(keys['ArrowLeft'] ||keys['a']||keys['A']) P.x-=P.spd;
-  if(keys['ArrowRight']||keys['d']||keys['D']) P.x+=P.spd;
-  if(keys['ArrowUp']   ||keys['w']||keys['W']) P.z-=P.spd;
-  if(keys['ArrowDown'] ||keys['s']||keys['S']) P.z+=P.spd;
-  P.x=Math.max(-48,Math.min(48,P.x)); P.z=Math.max(-48,Math.min(48,P.z));
-  P.mesh.position.set(P.x,0,P.z);
-  glow.position.set(P.x,3,P.z);
+// ── AUDIO ENGINE ─────────────────────────────────────────────────────────────
+let analyser, freqData, audioBass=0, audioMid=0, audioHigh=0;
 
-  // Leg walk anim
-  const la=Math.sin(frame*.25)*.18;
-  if(joy.on||(keys['ArrowLeft']||keys['ArrowRight']||keys['ArrowUp']||keys['ArrowDown'])){
-    P.mesh.children[0].rotation.x= la;
-    P.mesh.children[1].rotation.x=-la;
+function startAudio(){
+  const ac=new(window.AudioContext||window.webkitAudioContext)();
+  analyser=ac.createAnalyser();
+  analyser.fftSize=512; analyser.smoothingTimeConstant=.84;
+  freqData=new Uint8Array(analyser.frequencyBinCount);
+
+  const master=ac.createGain(); master.gain.value=.3;
+  const filt=ac.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=900; filt.Q.value=2.5;
+  const rev=ac.createGain(); rev.gain.value=.7; // dry mix
+
+  master.connect(analyser); analyser.connect(ac.destination);
+  filt.connect(rev); rev.connect(master);
+
+  function osc(freq,type,vol){
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type=type; o.frequency.value=freq; g.gain.value=vol;
+    o.connect(g); g.connect(filt); o.start(); return {o,g};
   }
 
-  if(P.fc>0)P.fc--; if(P.inv>0)P.inv--;
-  fireBullet();
+  // Drone layers — harmonic series on A1 (55 Hz)
+  const sub =osc(27.5,'sine',.55);  // A0 — felt not heard
+  const A1  =osc(55,  'sine',.35);
+  const A2  =osc(110, 'sine',.2);
+  const E3  =osc(165, 'triangle',.12);
+  const A3  =osc(220, 'sine',.09);
+  const Cs4 =osc(277, 'triangle',.06);
+  const E4  =osc(330, 'sine',.05);
+  const A4  =osc(440, 'sine',.03);
+  const hi  =osc(880, 'sine',.018);
 
-  // Spawn
-  if(zToSpawn>0&&--zTimer<=0){spawnZombie();zToSpawn--;zTimer=zDelay;}
+  // Beat pulse LFO (1.3 Hz ≈ 78 BPM) amplitude-modulates the sub
+  const beat=ac.createOscillator(); beat.frequency.value=1.3;
+  const beatG=ac.createGain(); beatG.gain.value=.28;
+  beat.connect(beatG); beatG.connect(sub.g.gain); beat.start();
 
-  // Zombies
-  for(let i=zombies.length-1;i>=0;i--){
-    const z=zombies[i];
-    if(z.stun>0){z.stun--;continue;}
-    z.wob+=z.ws;
-    z.ang=Math.atan2(P.z-z.z,P.x-z.x)+Math.sin(z.wob)*.12;
-    z.x+=Math.cos(z.ang)*z.spd; z.z+=Math.sin(z.ang)*z.spd;
-    z.mesh.position.set(z.x,0,z.z);
-    z.mesh.rotation.y=-z.ang-Math.PI/2;
-    z.mesh.rotation.z=Math.sin(z.wob*1.4)*.07;
-    if(Math.hypot(z.x-P.x,z.z-P.z)<z.r+P.r&&P.inv<=0){
-      P.hp-=z.dmg; P.inv=50; flash=12;
-      if(P.hp<=0){P.hp=0;blood(P.x,P.z,25);state=S.OVER;if(score>hs){hs=score;localStorage.setItem('dz3_hs',hs);}return;}
+  // Slow filter sweep
+  const sweep=ac.createOscillator(); sweep.frequency.value=.06;
+  const sweepG=ac.createGain(); sweepG.gain.value=650;
+  sweep.connect(sweepG); sweepG.connect(filt.frequency); sweep.start();
+
+  // Gentle detune drift — makes it feel alive
+  const drift=ac.createOscillator(); drift.frequency.value=.04;
+  const driftG=ac.createGain(); driftG.gain.value=6;
+  drift.connect(driftG); driftG.connect(A1.o.detune); drift.start();
+
+  // Periodic evolution: retune harmonics slowly
+  let evo=0;
+  setInterval(()=>{
+    evo++;
+    const t=ac.currentTime, r=()=>(Math.random()-.5);
+    E3.o.frequency.setTargetAtTime(165+r()*12,t,5);
+    Cs4.o.frequency.setTargetAtTime(277+r()*18,t,6);
+    E4.o.frequency.setTargetAtTime(330+r()*20,t,5);
+    hi.o.frequency.setTargetAtTime(880+r()*50,t,4);
+    // Every ~12 seconds shift the whole harmony subtly
+    if(evo%4===0){
+      const shift=r()*8;
+      [A1,A2,E3,A3,Cs4,E4,A4,hi].forEach(({o})=>o.detune.setTargetAtTime(shift,t,8));
     }
+  },3000);
+}
+
+// ── ORBIT CONTROL ────────────────────────────────────────────────────────────
+let theta=0, phi=Math.PI/2.4, radius=4.5;
+let dragging=false, prevX=0, prevY=0, prevPinch=0;
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let time=0, hue=.5;
+const hCol=new THREE.Color(), hCol2=new THREE.Color();
+
+// ── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt){
+  time+=dt*.35;
+
+  // Audio
+  if(analyser){
+    analyser.getByteFrequencyData(freqData);
+    let b=0,m=0,h=0;
+    for(let i=0;i< 8;i++) b+=freqData[i]; audioBass =b/(8*255);
+    for(let i=8;i<40;i++) m+=freqData[i]; audioMid  =m/(32*255);
+    for(let i=40;i<80;i++)h+=freqData[i]; audioHigh =h/(40*255);
   }
 
-  // Bullets
-  for(let i=bullets.length-1;i>=0;i--){
-    const b=bullets[i];
-    b.x+=b.vx; b.z+=b.vz; b.life--;
-    b.mesh.position.set(b.x,1.1,b.z);
-    b.mesh.rotation.y+=.35;
-    if(b.life<=0||Math.abs(b.x)>55||Math.abs(b.z)>55){scene.remove(b.mesh);bullets.splice(i,1);continue;}
-    for(let j=zombies.length-1;j>=0;j--){
-      const z=zombies[j];
-      if(Math.hypot(b.x-z.x,b.z-z.z)<z.r+.13){
-        z.hp-=P.dmg; z.stun=5;
-        blood(b.x,b.z,4);
-        scene.remove(b.mesh); bullets.splice(i,1);
-        if(z.hp<=0){
-          score+=z.pts; P.kills++;
-          blood(z.x,z.z,14); mkPickup(z.x,z.z);
-          scene.remove(z.mesh); zombies.splice(j,1);
-        }
-        break;
-      }
+  // Camera orbit — auto-rotate when not dragging
+  if(!dragging) theta+=dt*.12;
+  camera.position.set(
+    radius*Math.sin(phi)*Math.cos(theta),
+    radius*Math.cos(phi),
+    radius*Math.sin(phi)*Math.sin(theta)
+  );
+  camera.lookAt(0,0,0);
+
+  // Color cycle driven by audio and time
+  hue=(hue+dt*.025+audioBass*dt*.06)%1;
+  hCol.setHSL(hue,.85,.42+audioBass*.18);
+  hCol2.setHSL((hue+.52)%1,.85,.38);
+
+  bMat.color.set(hCol);
+  bMat.emissive.setHSL(hue,.7,.07+audioBass*.13);
+  bMat.shininess=100+audioMid*200;
+  wMat.color.set(hCol);
+  wMat.opacity=.1+audioMid*.15;
+  ptMat.color.set(hCol);
+  ptMat.opacity=.5+audioHigh*.5;
+  ptMat.size=.018+audioHigh*.025;
+  tMat.color.set(hCol); tMat.opacity=.12+audioMid*.2;
+  ring2.material.color.set(hCol2); ring2.material.opacity=.1+audioMid*.18;
+  haloMats.forEach((m,i)=>{ m.color.set(hCol); m.opacity=(.04-i*.005)*(1+audioBass*2); });
+  L1.color.set(hCol); L1.intensity=3+audioBass*5;
+  L2.color.set(hCol2); L2.intensity=1.5+audioMid*3;
+  L1.position.set(Math.sin(time*.6)*2,Math.cos(time*.4)*1.5,Math.cos(time*.5)*2);
+
+  // Morph main blob
+  for(let i=0,n=bPos.count;i<n;i++){
+    const ox=origPos[i*3],oy=origPos[i*3+1],oz=origPos[i*3+2];
+    const len=Math.sqrt(ox*ox+oy*oy+oz*oz);
+    const nx=ox/len,ny=oy/len,nz=oz/len;
+    const d=1+warp(nx,ny,nz,time)*(.4+audioMid*.45)+audioBass*.28;
+    bPos.setXYZ(i,nx*d,ny*d,nz*d);
+  }
+  bPos.needsUpdate=true;
+  bGeo.computeVertexNormals();
+
+  // Rings react to mid
+  ring1.rotation.x+=dt*.12+audioMid*dt*.8;
+  ring1.rotation.y+=dt*.08;
+  const rs=1+audioMid*.15;
+  ring1.scale.setScalar(rs); ring2.scale.setScalar(rs);
+  ring2.rotation.z+=dt*.1+audioMid*dt*.6;
+
+  // Satellite blobs
+  for(let si=0;si<SATS;si++){
+    const s=sats[si];
+    const sp=s.geo.attributes.position, so=s.orig;
+    for(let i=0,n=sp.count;i<n;i++){
+      const ox=so[i*3],oy=so[i*3+1],oz=so[i*3+2];
+      const len=Math.sqrt(ox*ox+oy*oy+oz*oz);
+      const nx=ox/len,ny=oy/len,nz=oz/len;
+      const d=1+smooth(nx+si*3.1,ny+si*3.1,nz+si*3.1,time*.9)*(.35+audioMid*.35)+audioBass*.2;
+      sp.setXYZ(i,nx*d,ny*d,nz*d);
     }
+    sp.needsUpdate=true; s.geo.computeVertexNormals();
+    s.mesh.material.color.set(hCol2); s.mesh.material.emissive.setHSL((hue+.5)%1,.7,.06+audioBass*.1);
+    s.wire.material.color.set(hCol2);
+    const a=time*s.spd+s.phase;
+    const op=new THREE.Vector3(Math.cos(a)*s.orb, Math.sin(a*s.tilt*.6)*.7, Math.sin(a)*s.orb);
+    s.mesh.position.copy(op); s.wire.position.copy(op);
   }
 
   // Particles
-  for(let i=parts.length-1;i>=0;i--){
-    const p=parts[i];
-    p.mesh.position.x+=p.vx; p.mesh.position.y+=p.vy; p.mesh.position.z+=p.vz;
-    p.vy-=.004;
-    p.mesh.material.opacity=Math.max(0,p.life/p.ml);
-    if(--p.life<=0){scene.remove(p.mesh);parts.splice(i,1);}
-  }
-
-  // Pickups
-  for(let i=pickups.length-1;i>=0;i--){
-    const pk=pickups[i];
-    pk.pulse+=.08; pk.mesh.position.y=.4+Math.sin(pk.pulse)*.16; pk.mesh.rotation.y+=.04;
-    if(--pk.life<=0){scene.remove(pk.mesh);pickups.splice(i,1);continue;}
-    if(Math.hypot(pk.x-P.x,pk.z-P.z)<pk.r+P.r){
-      if(pk.type==='hp') P.hp=Math.min(P.maxHp,P.hp+30);
-      else{const o=P.spd;P.spd=.22;setTimeout(()=>P.spd=o,5000);}
-      scene.remove(pk.mesh); pickups.splice(i,1);
+  const hm=1+audioHigh*4;
+  for(let i=0;i<NP;i++){
+    const j=i*3;
+    ptPos[j]  +=ptVel[j]  *hm;
+    ptPos[j+1]+=ptVel[j+1]*hm;
+    ptPos[j+2]+=ptVel[j+2]*hm;
+    const d2=ptPos[j]*ptPos[j]+ptPos[j+1]*ptPos[j+1]+ptPos[j+2]*ptPos[j+2];
+    if(d2>16||d2<.04){   // respawn near blob surface
+      const r=1+audioBass*.4, t2=Math.random()*Math.PI*2, p2=Math.acos(2*Math.random()-1);
+      const nx=Math.sin(p2)*Math.cos(t2),ny=Math.cos(p2),nz=Math.sin(p2)*Math.sin(t2);
+      ptPos[j]=nx*r; ptPos[j+1]=ny*r; ptPos[j+2]=nz*r;
+      const s=.0008+Math.random()*.0035;
+      ptVel[j]=nx*s+(Math.random()-.5)*.0015;
+      ptVel[j+1]=ny*s+(Math.random()-.5)*.0015;
+      ptVel[j+2]=nz*s+(Math.random()-.5)*.0015;
     }
   }
-
-  // Wave
-  if(!waveDone&&zToSpawn<=0&&zombies.length===0){waveDone=true;waveTimer=120;}
-  if(waveDone&&--waveTimer<=0) nextWave();
-
-  // Camera smooth follow
-  camX=lerp(camX,P.x,.1); camZ=lerp(camZ,P.z,.1);
-  camera.position.set(camX,17,camZ+12);
-  camera.lookAt(camX,0,camZ-1);
+  ptGeo.attributes.position.needsUpdate=true;
 }
 
-// ── HUD ─────────────────────────────────────────────────────────────────────
-function rrect(x,y,w,h,r){
-  hx.beginPath();
-  hx.moveTo(x+r,y); hx.lineTo(x+w-r,y); hx.quadraticCurveTo(x+w,y,x+w,y+r);
-  hx.lineTo(x+w,y+h-r); hx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  hx.lineTo(x+r,y+h); hx.quadraticCurveTo(x,y+h,x,y+h-r);
-  hx.lineTo(x,y+r); hx.quadraticCurveTo(x,y,x+r,y);
-  hx.closePath();
-}
-function redBtn(x,y,w,h,label){
-  hx.save(); hx.shadowColor='#e02020'; hx.shadowBlur=22; hx.fillStyle='#c41a1a';
-  rrect(x,y,w,h,10); hx.fill(); hx.restore();
-  hx.fillStyle='#fff'; hx.textAlign='center';
-  hx.font=`bold ${W*.065|0}px 'Courier New',monospace`;
-  hx.fillText(label,x+w/2,y+h/2+10);
-}
-
-let W,H;
-function drawHUD(){
-  W=hud.width; H=hud.height;
-  hx.clearRect(0,0,W,H);
-
-  if(state===S.MENU){
-    // Camera orbit on menu
-    const t=Date.now()*.0004;
-    camera.position.set(Math.sin(t)*10,14,Math.cos(t)*10+5);
-    camera.lookAt(0,1,0);
-
-    hx.fillStyle='rgba(0,0,0,.52)'; hx.fillRect(0,0,W,H);
-    hx.save(); hx.textAlign='center';
-    hx.shadowColor='#e02020'; hx.shadowBlur=45;
-    hx.fillStyle='#e02020';
-    hx.font=`bold ${W*.19|0}px 'Courier New',monospace`;
-    hx.fillText('DEAD',W/2,H*.27); hx.fillText('ZONE',W/2,H*.43);
-    hx.restore();
-    hx.textAlign='center'; hx.fillStyle='#7dcf4f';
-    hx.font=`${W*.042|0}px 'Courier New',monospace`;
-    hx.fillText('☠  3D  ZOMBIE  SURVIVAL  ☠',W/2,H*.51);
-    if(hs>0){hx.fillStyle='#d4a830';hx.font=`${W*.036|0}px 'Courier New',monospace`;hx.fillText(`BEST: ${hs}`,W/2,H*.59);}
-    redBtn(W/2-(W*.62/2)|0,H*.65,W*.62|0,58,'▶  PLAY');
-    hx.fillStyle='#445a50'; hx.font=`${W*.03|0}px 'Courier New',monospace`;
-    hx.fillText('DRAG LEFT → MOVE   |   AUTO FIRES',W/2,H*.84);
-    hx.fillText('Survive the zombie waves!',W/2,H*.89);
-    return;
-  }
-
-  if(state===S.OVER){
-    hx.fillStyle='rgba(0,0,0,.82)'; hx.fillRect(0,0,W,H);
-    hx.save(); hx.textAlign='center';
-    hx.font=`bold ${W*.13|0}px 'Courier New',monospace`;
-    hx.fillStyle='#e02020'; hx.shadowColor='#e02020'; hx.shadowBlur=35;
-    hx.fillText('YOU DIED',W/2,H*.28); hx.restore();
-    hx.textAlign='center'; hx.fillStyle='#d4a830';
-    hx.font=`bold ${W*.078|0}px 'Courier New',monospace`;
-    hx.fillText(`SCORE: ${score}`,W/2,H*.42);
-    if(score>0&&score>=hs){
-      hx.fillStyle='#e080ff'; hx.font=`bold ${W*.05|0}px 'Courier New',monospace`;
-      hx.fillText('✦  NEW BEST!  ✦',W/2,H*.5);
-    } else {
-      hx.fillStyle='#555'; hx.font=`${W*.038|0}px 'Courier New',monospace`;
-      hx.fillText(`BEST: ${hs}`,W/2,H*.5);
-    }
-    hx.fillStyle='#7dcf4f'; hx.font=`${W*.037|0}px 'Courier New',monospace`;
-    hx.fillText(`WAVE ${wave}  •  ${P.kills} KILLS`,W/2,H*.58);
-    redBtn(W/2-(W*.6/2)|0,H*.67,W*.6|0,58,'↺  RETRY');
-    return;
-  }
-
-  // ── playing ──
-  // HP bar
-  const hbW=W*.38|0,hbX=12,hbY=12;
-  hx.fillStyle='#111'; hx.fillRect(hbX,hbY,hbW,20);
-  const hpR=P.hp/P.maxHp;
-  hx.fillStyle=hpR>.6?'#40e040':hpR>.3?'#e0c030':'#e03030';
-  hx.fillRect(hbX,hbY,hbW*hpR,20);
-  hx.strokeStyle='#444'; hx.lineWidth=1; hx.strokeRect(hbX,hbY,hbW,20);
-  hx.fillStyle='#eee'; hx.font=`bold 11px 'Courier New',monospace`; hx.textAlign='left';
-  hx.fillText(`HP ${P.hp}`,hbX+5,hbY+14);
-
-  hx.textAlign='right';
-  hx.fillStyle='#d4a830'; hx.font=`bold ${W*.055|0}px 'Courier New',monospace`;
-  hx.fillText(score,W-12,35);
-  hx.fillStyle='#7dcf4f'; hx.font=`${W*.038|0}px 'Courier New',monospace`;
-  hx.fillText(`WAVE ${wave}`,W-12,58);
-  hx.fillStyle='#e07030'; hx.font=`${W*.032|0}px 'Courier New',monospace`;
-  hx.fillText(`☠ ${zombies.length+zToSpawn}`,W-12,76);
-
-  // Wave clear
-  if(waveDone&&waveTimer>60){
-    const al=Math.min(1,(waveTimer-60)/25);
-    hx.save(); hx.globalAlpha=al;
-    hx.fillStyle='rgba(0,0,0,.72)'; hx.fillRect(0,H/2-44,W,88);
-    hx.fillStyle='#7dcf4f'; hx.shadowColor='#7dcf4f'; hx.shadowBlur=24;
-    hx.font=`bold ${W*.072|0}px 'Courier New',monospace`; hx.textAlign='center';
-    hx.fillText(`WAVE ${wave} CLEAR!`,W/2,H/2+16); hx.restore();
-  }
-
-  // Damage flash
-  if(flash>0){hx.fillStyle=`rgba(220,20,20,${flash*.045})`;hx.fillRect(0,0,W,H);flash--;}
-
-  // Joystick
-  if(joy.on){
-    hx.save(); hx.globalAlpha=.3;
-    hx.strokeStyle='#ccc'; hx.lineWidth=2;
-    hx.beginPath(); hx.arc(joy.bx,joy.by,joy.mr,0,Math.PI*2); hx.stroke();
-    hx.globalAlpha=.6; hx.fillStyle='#bbb';
-    hx.beginPath(); hx.arc(joy.tx,joy.ty,22,0,Math.PI*2); hx.fill();
-    hx.restore();
-  }
-}
-
-// ── GAME LOOP ───────────────────────────────────────────────────────────────
-function loop(){
+// ── LOOP ─────────────────────────────────────────────────────────────────────
+let prev=0;
+function loop(now){
   requestAnimationFrame(loop);
-  update();
+  const dt=Math.min((now-prev)/1000,.05);
+  prev=now;
+  update(dt);
   renderer.render(scene,camera);
-  drawHUD();
 }
+requestAnimationFrame(t=>{prev=t;requestAnimationFrame(loop);});
 
-// ── START ───────────────────────────────────────────────────────────────────
-function startGame(){
-  for(const z of zombies) scene.remove(z.mesh);
-  for(const b of bullets) scene.remove(b.mesh);
-  for(const p of parts)   scene.remove(p.mesh);
-  for(const pk of pickups) scene.remove(pk.mesh);
-  zombies.length=bullets.length=parts.length=pickups.length=0;
-  score=0;wave=0;frame=0;flash=0;camX=0;camZ=0;
-  for(const k in keys) delete keys[k];
-  joy.on=false;joy.dx=0;joy.dy=0;
-  mkPlayer(); nextWave(); state=S.PLAY;
+// ── SPLASH ───────────────────────────────────────────────────────────────────
+const splash=document.getElementById('splash');
+function begin(e){
+  if(e.type==='touchend') e.preventDefault();
+  startAudio();
+  splash.style.transition='opacity .6s';
+  splash.style.opacity='0';
+  setTimeout(()=>splash.style.display='none',650);
+  const hint=document.getElementById('hint');
+  setTimeout(()=>{ hint.style.opacity='0'; setTimeout(()=>hint.remove(),3000); },4000);
 }
+splash.addEventListener('click',begin);
+splash.addEventListener('touchend',begin,{passive:false});
 
-// ── INPUT ───────────────────────────────────────────────────────────────────
-function hitBtn(x,y){
-  const w=W,h=H;
-  if(state===S.MENU){const bw=w*.62,bx=w/2-bw/2,by=h*.65;return x>=bx&&x<=bx+bw&&y>=by&&y<=by+58;}
-  if(state===S.OVER){const bw=w*.6, bx=w/2-bw/2,by=h*.67;return x>=bx&&x<=bx+bw&&y>=by&&y<=by+58;}
-  return false;
-}
-
-hud.addEventListener('touchstart',e=>{
-  e.preventDefault();
-  for(const t of e.changedTouches){
-    const x=t.clientX,y=t.clientY;
-    if(state===S.PLAY){
-      if(x<innerWidth/2&&!joy.on){joy.on=true;joy.id=t.identifier;joy.bx=x;joy.by=y;joy.tx=x;joy.ty=y;joy.dx=0;joy.dy=0;}
-    } else if(hitBtn(x,y)) startGame();
-  }
-},{passive:false});
-
-hud.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  for(const t of e.changedTouches){
-    if(t.identifier!==joy.id) continue;
-    let dx=t.clientX-joy.bx,dy=t.clientY-joy.by;
-    const d=Math.hypot(dx,dy);
-    if(d>joy.mr){dx=dx/d*joy.mr;dy=dy/d*joy.mr;}
-    joy.tx=joy.bx+dx;joy.ty=joy.by+dy;joy.dx=dx/joy.mr;joy.dy=dy/joy.mr;
-  }
-},{passive:false});
-
-hud.addEventListener('touchend',e=>{
-  e.preventDefault();
-  for(const t of e.changedTouches) if(t.identifier===joy.id){joy.on=false;joy.id=-1;joy.dx=0;joy.dy=0;}
-},{passive:false});
-
-let mDown=false;
-hud.addEventListener('mousedown',e=>{
-  const x=e.clientX,y=e.clientY;
-  if(state===S.PLAY&&x<innerWidth/2){mDown=true;joy.on=true;joy.id='mouse';joy.bx=x;joy.by=y;joy.tx=x;joy.ty=y;joy.dx=0;joy.dy=0;}
-  else if(hitBtn(x,y)) startGame();
-});
+// ── INPUT — ORBIT ─────────────────────────────────────────────────────────────
+gc.addEventListener('mousedown',e=>{dragging=true;prevX=e.clientX;prevY=e.clientY;});
 window.addEventListener('mousemove',e=>{
-  if(!mDown)return;
-  let dx=e.clientX-joy.bx,dy=e.clientY-joy.by;
-  const d=Math.hypot(dx,dy);
-  if(d>joy.mr){dx=dx/d*joy.mr;dy=dy/d*joy.mr;}
-  joy.tx=joy.bx+dx;joy.ty=joy.by+dy;joy.dx=dx/joy.mr;joy.dy=dy/joy.mr;
+  if(!dragging)return;
+  theta-=(e.clientX-prevX)*.012; phi-=(e.clientY-prevY)*.012;
+  phi=Math.max(.08,Math.min(Math.PI-.08,phi));
+  prevX=e.clientX;prevY=e.clientY;
 });
-window.addEventListener('mouseup',()=>{mDown=false;if(joy.id==='mouse'){joy.on=false;joy.id=-1;joy.dx=0;joy.dy=0;}});
+window.addEventListener('mouseup',()=>dragging=false);
+window.addEventListener('wheel',e=>{radius=Math.max(1.5,Math.min(14,radius+e.deltaY*.005));},{passive:true});
 
-// ── INIT ────────────────────────────────────────────────────────────────────
-W=hud.width; H=hud.height;
-loop();
+gc.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){dragging=true;prevX=e.touches[0].clientX;prevY=e.touches[0].clientY;}
+  if(e.touches.length===2) prevPinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+},{passive:true});
+gc.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&dragging){
+    theta-=(e.touches[0].clientX-prevX)*.014;
+    phi  -=(e.touches[0].clientY-prevY)*.014;
+    phi=Math.max(.08,Math.min(Math.PI-.08,phi));
+    prevX=e.touches[0].clientX;prevY=e.touches[0].clientY;
+  }
+  if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(prevPinch>0) radius=Math.max(1.5,Math.min(14,radius*prevPinch/d));
+    prevPinch=d;
+  }
+},{passive:false});
+gc.addEventListener('touchend',()=>dragging=false);
 </script>
 </body>
 </html>
