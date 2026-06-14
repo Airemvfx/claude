@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>FRACTAL AUDIO VISUALIZER</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:manipulation}
+    #c{touch-action:none}
+    #c{display:block;width:100%;height:100%}
+    #splash{
+      position:fixed;inset:0;z-index:999;
+      background:rgba(0,4,8,.88);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      cursor:pointer;user-select:none;touch-action:auto;
+      font-family:'Courier New',monospace;color:#fff;
+    }
+    .t1{font-size:clamp(28px,11vw,64px);letter-spacing:.15em;
+        color:#00ffcc;text-shadow:0 0 40px #00ffcc,0 0 80px #00ffcc44;line-height:1.1;text-align:center}
+    .t2{margin-top:10px;font-size:clamp(11px,3.5vw,18px);color:#446677;letter-spacing:.2em}
+    .tap{margin-top:44px;font-size:clamp(15px,4.5vw,24px);color:#fff;
+         animation:pulse 1.6s ease-in-out infinite;letter-spacing:.1em}
+    @keyframes pulse{0%,100%{opacity:.3;text-shadow:none}50%{opacity:1;text-shadow:0 0 20px #00ffcc}}
+    #hint{position:fixed;bottom:16px;width:100%;text-align:center;
+          font-family:'Courier New',monospace;font-size:11px;color:#223344;
+          pointer-events:none;letter-spacing:.12em;transition:opacity 3s}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="splash">
+  <div class="t1">FRACTAL<br>AUDIO VIZ</div>
+  <div class="t2">3D  PARAMETRIC  VISUALIZER</div>
+  <div class="tap">▶  TAP  TO  BEGIN</div>
+</div>
+<div id="hint">DRAG TO ORBIT  •  PINCH TO ZOOM</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+'use strict';
+
+// ── MATH / NOISE ─────────────────────────────────────────────────────────────
+// Smooth organic noise via layered trig (cheaper than Perlin, looks great)
+function smooth(x,y,z,t){
+  let v=0,a=.5,f=1;
+  for(let i=0;i<4;i++){
+    v+=Math.sin(x*f*2.1+t*.22+i*1.7)*Math.cos(y*f*1.9+t*.17+i*2.3)*Math.sin(z*f*2.3+t*.19+i*1.1)*a;
+    a*=.5;f*=2.1;
+  }
+  return v;
+}
+// Domain-warped version for fractal complexity
+function warp(x,y,z,t){
+  const q=smooth(x,y,z,t), r=smooth(x+1.7,y+9.2,z+.5,t);
+  return smooth(x+1.1*q, y+1.1*r, z+1.1*(q+r)*.5, t);
+}
+
+// ── RENDERER / SCENE ─────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x000508);
+scene.fog=new THREE.FogExp2(0x000508,.03);
+
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.01,400);
+camera.position.set(0,0,4.5);
+
+const gc=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas:gc,antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+
+window.addEventListener('resize',()=>{
+  renderer.setSize(innerWidth,innerHeight);
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ── LIGHTING ─────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x060a10,3));
+const L1=new THREE.PointLight(0x00ffcc,4,18); scene.add(L1);
+const L2=new THREE.PointLight(0xff44cc,2,14); L2.position.set(-3,2,-2); scene.add(L2);
+const L3=new THREE.PointLight(0x4444ff,1.5,12); L3.position.set(2,-2,2); scene.add(L3);
+
+// ── STAR FIELD ───────────────────────────────────────────────────────────────
+{
+  const sg=new THREE.BufferGeometry(), sp=new Float32Array(4000*3);
+  for(let i=0;i<4000;i++){
+    const r=60+Math.random()*140,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);
+    sp[i*3]=Math.sin(p)*Math.cos(t)*r; sp[i*3+1]=Math.cos(p)*r; sp[i*3+2]=Math.sin(p)*Math.sin(t)*r;
+  }
+  sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
+  scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0x99aabb,size:.25})));
+}
+
+// ── MAIN BLOB ────────────────────────────────────────────────────────────────
+const SEGS=36;
+const bGeo=new THREE.SphereGeometry(1,SEGS,SEGS);
+const origPos=bGeo.attributes.position.array.slice();
+const bPos=bGeo.attributes.position;
+
+const bMat=new THREE.MeshPhongMaterial({color:0x00ffcc,emissive:0x003322,shininess:160,specular:0x55ffee});
+const blob=new THREE.Mesh(bGeo,bMat);
+scene.add(blob);
+
+// Wireframe on same geometry (auto-follows morph)
+const wMat=new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true,transparent:true,opacity:.16,blending:THREE.AdditiveBlending});
+scene.add(new THREE.Mesh(bGeo,wMat));
+
+// Halo glow layers (same geo, larger scale, additive back-faces)
+const haloMats=[];
+for(let i=0;i<4;i++){
+  const hm=new THREE.MeshBasicMaterial({color:0x00ffcc,transparent:true,opacity:.04-i*.005,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false});
+  haloMats.push(hm);
+  const h=new THREE.Mesh(bGeo,hm);
+  h.scale.setScalar(1.1+i*.1);
+  scene.add(h);
+}
+
+// ── SATELLITE BLOBS ──────────────────────────────────────────────────────────
+const SATS=3;
+const sats=[];
+for(let i=0;i<SATS;i++){
+  const sg=new THREE.SphereGeometry(.38,22,22);
+  const sorig=sg.attributes.position.array.slice();
+  const sm=new THREE.MeshPhongMaterial({color:0xff44cc,emissive:0x220011,shininess:90});
+  const sw=new THREE.MeshBasicMaterial({color:0xff44cc,wireframe:true,transparent:true,opacity:.22,blending:THREE.AdditiveBlending});
+  const mesh=new THREE.Mesh(sg,sm), wire=new THREE.Mesh(sg,sw);
+  scene.add(mesh); scene.add(wire);
+  sats.push({mesh,wire,geo:sg,orig:sorig,phase:(i/SATS)*Math.PI*2,orb:2.3+i*.45,spd:.38+i*.18,tilt:.3+i*.4});
+}
+
+// ── PARTICLES ────────────────────────────────────────────────────────────────
+const NP=1600;
+const ptGeo=new THREE.BufferGeometry();
+const ptPos=new Float32Array(NP*3);
+const ptVel=new Float32Array(NP*3);
+for(let i=0;i<NP;i++){
+  const r=.6+Math.random()*2,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);
+  const nx=Math.sin(p)*Math.cos(t),ny=Math.cos(p),nz=Math.sin(p)*Math.sin(t);
+  ptPos[i*3]=nx*r; ptPos[i*3+1]=ny*r; ptPos[i*3+2]=nz*r;
+  const s=.0008+Math.random()*.0035;
+  ptVel[i*3]=nx*s+(Math.random()-.5)*.0015;
+  ptVel[i*3+1]=ny*s+(Math.random()-.5)*.0015;
+  ptVel[i*3+2]=nz*s+(Math.random()-.5)*.0015;
+}
+ptGeo.setAttribute('position',new THREE.BufferAttribute(ptPos,3));
+const ptMat=new THREE.PointsMaterial({color:0x00ffcc,size:.022,transparent:true,opacity:.7,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+const pts=new THREE.Points(ptGeo,ptMat);
+scene.add(pts);
+
+// ── RING STRUCTURE ───────────────────────────────────────────────────────────
+// Animated torus that reacts to mid frequencies
+const tGeo=new THREE.TorusGeometry(2.2,.02,8,120);
+const tMat=new THREE.MeshBasicMaterial({color:0x00ffcc,transparent:true,opacity:.2,blending:THREE.AdditiveBlending});
+const ring1=new THREE.Mesh(tGeo,tMat); scene.add(ring1);
+const ring2=new THREE.Mesh(new THREE.TorusGeometry(2.6,.015,8,120),
+  new THREE.MeshBasicMaterial({color:0xff44cc,transparent:true,opacity:.15,blending:THREE.AdditiveBlending}));
+ring2.rotation.x=Math.PI/3;
+scene.add(ring2);
+
+// ── AUDIO ENGINE ─────────────────────────────────────────────────────────────
+let analyser, freqData, audioBass=0, audioMid=0, audioHigh=0;
+
+function startAudio(){
+  const ac=new(window.AudioContext||window.webkitAudioContext)();
+  analyser=ac.createAnalyser();
+  analyser.fftSize=512; analyser.smoothingTimeConstant=.84;
+  freqData=new Uint8Array(analyser.frequencyBinCount);
+
+  const master=ac.createGain(); master.gain.value=.3;
+  const filt=ac.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=900; filt.Q.value=2.5;
+  const rev=ac.createGain(); rev.gain.value=.7; // dry mix
+
+  master.connect(analyser); analyser.connect(ac.destination);
+  filt.connect(rev); rev.connect(master);
+
+  function osc(freq,type,vol){
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type=type; o.frequency.value=freq; g.gain.value=vol;
+    o.connect(g); g.connect(filt); o.start(); return {o,g};
+  }
+
+  // Drone layers — harmonic series on A1 (55 Hz)
+  const sub =osc(27.5,'sine',.55);  // A0 — felt not heard
+  const A1  =osc(55,  'sine',.35);
+  const A2  =osc(110, 'sine',.2);
+  const E3  =osc(165, 'triangle',.12);
+  const A3  =osc(220, 'sine',.09);
+  const Cs4 =osc(277, 'triangle',.06);
+  const E4  =osc(330, 'sine',.05);
+  const A4  =osc(440, 'sine',.03);
+  const hi  =osc(880, 'sine',.018);
+
+  // Beat pulse LFO (1.3 Hz ≈ 78 BPM) amplitude-modulates the sub
+  const beat=ac.createOscillator(); beat.frequency.value=1.3;
+  const beatG=ac.createGain(); beatG.gain.value=.28;
+  beat.connect(beatG); beatG.connect(sub.g.gain); beat.start();
+
+  // Slow filter sweep
+  const sweep=ac.createOscillator(); sweep.frequency.value=.06;
+  const sweepG=ac.createGain(); sweepG.gain.value=650;
+  sweep.connect(sweepG); sweepG.connect(filt.frequency); sweep.start();
+
+  // Gentle detune drift — makes it feel alive
+  const drift=ac.createOscillator(); drift.frequency.value=.04;
+  const driftG=ac.createGain(); driftG.gain.value=6;
+  drift.connect(driftG); driftG.connect(A1.o.detune); drift.start();
+
+  // Periodic evolution: retune harmonics slowly
+  let evo=0;
+  setInterval(()=>{
+    evo++;
+    const t=ac.currentTime, r=()=>(Math.random()-.5);
+    E3.o.frequency.setTargetAtTime(165+r()*12,t,5);
+    Cs4.o.frequency.setTargetAtTime(277+r()*18,t,6);
+    E4.o.frequency.setTargetAtTime(330+r()*20,t,5);
+    hi.o.frequency.setTargetAtTime(880+r()*50,t,4);
+    // Every ~12 seconds shift the whole harmony subtly
+    if(evo%4===0){
+      const shift=r()*8;
+      [A1,A2,E3,A3,Cs4,E4,A4,hi].forEach(({o})=>o.detune.setTargetAtTime(shift,t,8));
+    }
+  },3000);
+}
+
+// ── ORBIT CONTROL ────────────────────────────────────────────────────────────
+let theta=0, phi=Math.PI/2.4, radius=4.5;
+let dragging=false, prevX=0, prevY=0, prevPinch=0;
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let time=0, hue=.5;
+const hCol=new THREE.Color(), hCol2=new THREE.Color();
+
+// ── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt){
+  time+=dt*.35;
+
+  // Audio
+  if(analyser){
+    analyser.getByteFrequencyData(freqData);
+    let b=0,m=0,h=0;
+    for(let i=0;i< 8;i++) b+=freqData[i]; audioBass =b/(8*255);
+    for(let i=8;i<40;i++) m+=freqData[i]; audioMid  =m/(32*255);
+    for(let i=40;i<80;i++)h+=freqData[i]; audioHigh =h/(40*255);
+  }
+
+  // Camera orbit — auto-rotate when not dragging
+  if(!dragging) theta+=dt*.12;
+  camera.position.set(
+    radius*Math.sin(phi)*Math.cos(theta),
+    radius*Math.cos(phi),
+    radius*Math.sin(phi)*Math.sin(theta)
+  );
+  camera.lookAt(0,0,0);
+
+  // Color cycle driven by audio and time
+  hue=(hue+dt*.025+audioBass*dt*.06)%1;
+  hCol.setHSL(hue,.85,.42+audioBass*.18);
+  hCol2.setHSL((hue+.52)%1,.85,.38);
+
+  bMat.color.set(hCol);
+  bMat.emissive.setHSL(hue,.7,.07+audioBass*.13);
+  bMat.shininess=100+audioMid*200;
+  wMat.color.set(hCol);
+  wMat.opacity=.1+audioMid*.15;
+  ptMat.color.set(hCol);
+  ptMat.opacity=.5+audioHigh*.5;
+  ptMat.size=.018+audioHigh*.025;
+  tMat.color.set(hCol); tMat.opacity=.12+audioMid*.2;
+  ring2.material.color.set(hCol2); ring2.material.opacity=.1+audioMid*.18;
+  haloMats.forEach((m,i)=>{ m.color.set(hCol); m.opacity=(.04-i*.005)*(1+audioBass*2); });
+  L1.color.set(hCol); L1.intensity=3+audioBass*5;
+  L2.color.set(hCol2); L2.intensity=1.5+audioMid*3;
+  L1.position.set(Math.sin(time*.6)*2,Math.cos(time*.4)*1.5,Math.cos(time*.5)*2);
+
+  // Morph main blob
+  for(let i=0,n=bPos.count;i<n;i++){
+    const ox=origPos[i*3],oy=origPos[i*3+1],oz=origPos[i*3+2];
+    const len=Math.sqrt(ox*ox+oy*oy+oz*oz);
+    const nx=ox/len,ny=oy/len,nz=oz/len;
+    const d=1+warp(nx,ny,nz,time)*(.4+audioMid*.45)+audioBass*.28;
+    bPos.setXYZ(i,nx*d,ny*d,nz*d);
+  }
+  bPos.needsUpdate=true;
+  bGeo.computeVertexNormals();
+
+  // Rings react to mid
+  ring1.rotation.x+=dt*.12+audioMid*dt*.8;
+  ring1.rotation.y+=dt*.08;
+  const rs=1+audioMid*.15;
+  ring1.scale.setScalar(rs); ring2.scale.setScalar(rs);
+  ring2.rotation.z+=dt*.1+audioMid*dt*.6;
+
+  // Satellite blobs
+  for(let si=0;si<SATS;si++){
+    const s=sats[si];
+    const sp=s.geo.attributes.position, so=s.orig;
+    for(let i=0,n=sp.count;i<n;i++){
+      const ox=so[i*3],oy=so[i*3+1],oz=so[i*3+2];
+      const len=Math.sqrt(ox*ox+oy*oy+oz*oz);
+      const nx=ox/len,ny=oy/len,nz=oz/len;
+      const d=1+smooth(nx+si*3.1,ny+si*3.1,nz+si*3.1,time*.9)*(.35+audioMid*.35)+audioBass*.2;
+      sp.setXYZ(i,nx*d,ny*d,nz*d);
+    }
+    sp.needsUpdate=true; s.geo.computeVertexNormals();
+    s.mesh.material.color.set(hCol2); s.mesh.material.emissive.setHSL((hue+.5)%1,.7,.06+audioBass*.1);
+    s.wire.material.color.set(hCol2);
+    const a=time*s.spd+s.phase;
+    const op=new THREE.Vector3(Math.cos(a)*s.orb, Math.sin(a*s.tilt*.6)*.7, Math.sin(a)*s.orb);
+    s.mesh.position.copy(op); s.wire.position.copy(op);
+  }
+
+  // Particles
+  const hm=1+audioHigh*4;
+  for(let i=0;i<NP;i++){
+    const j=i*3;
+    ptPos[j]  +=ptVel[j]  *hm;
+    ptPos[j+1]+=ptVel[j+1]*hm;
+    ptPos[j+2]+=ptVel[j+2]*hm;
+    const d2=ptPos[j]*ptPos[j]+ptPos[j+1]*ptPos[j+1]+ptPos[j+2]*ptPos[j+2];
+    if(d2>16||d2<.04){   // respawn near blob surface
+      const r=1+audioBass*.4, t2=Math.random()*Math.PI*2, p2=Math.acos(2*Math.random()-1);
+      const nx=Math.sin(p2)*Math.cos(t2),ny=Math.cos(p2),nz=Math.sin(p2)*Math.sin(t2);
+      ptPos[j]=nx*r; ptPos[j+1]=ny*r; ptPos[j+2]=nz*r;
+      const s=.0008+Math.random()*.0035;
+      ptVel[j]=nx*s+(Math.random()-.5)*.0015;
+      ptVel[j+1]=ny*s+(Math.random()-.5)*.0015;
+      ptVel[j+2]=nz*s+(Math.random()-.5)*.0015;
+    }
+  }
+  ptGeo.attributes.position.needsUpdate=true;
+}
+
+// ── LOOP ─────────────────────────────────────────────────────────────────────
+let prev=0;
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-prev)/1000,.05);
+  prev=now;
+  update(dt);
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(t=>{prev=t;requestAnimationFrame(loop);});
+
+// ── SPLASH ───────────────────────────────────────────────────────────────────
+const splash=document.getElementById('splash');
+let started=false;
+function begin(e){
+  if(started)return; started=true;
+  if(e&&e.cancelable) e.preventDefault();
+  try{startAudio();}catch(err){console.warn('audio:',err);}
+  splash.style.transition='opacity .6s';
+  splash.style.opacity='0';
+  setTimeout(()=>splash.style.display='none',650);
+  const hint=document.getElementById('hint');
+  if(hint) setTimeout(()=>{hint.style.opacity='0';setTimeout(()=>hint.remove(),3000);},4000);
+}
+// Listen on document so ANY tap anywhere works — most reliable across
+// all mobile browsers, iframes, and WebView environments
+document.addEventListener('pointerdown', begin, {once:true});
+document.addEventListener('touchstart',  begin, {passive:false, once:true});
+
+// ── INPUT — ORBIT ─────────────────────────────────────────────────────────────
+gc.addEventListener('mousedown',e=>{dragging=true;prevX=e.clientX;prevY=e.clientY;});
+window.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  theta-=(e.clientX-prevX)*.012; phi-=(e.clientY-prevY)*.012;
+  phi=Math.max(.08,Math.min(Math.PI-.08,phi));
+  prevX=e.clientX;prevY=e.clientY;
+});
+window.addEventListener('mouseup',()=>dragging=false);
+window.addEventListener('wheel',e=>{radius=Math.max(1.5,Math.min(14,radius+e.deltaY*.005));},{passive:true});
+
+gc.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){dragging=true;prevX=e.touches[0].clientX;prevY=e.touches[0].clientY;}
+  if(e.touches.length===2) prevPinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+},{passive:true});
+gc.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&dragging){
+    theta-=(e.touches[0].clientX-prevX)*.014;
+    phi  -=(e.touches[0].clientY-prevY)*.014;
+    phi=Math.max(.08,Math.min(Math.PI-.08,phi));
+    prevX=e.touches[0].clientX;prevY=e.touches[0].clientY;
+  }
+  if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(prevPinch>0) radius=Math.max(1.5,Math.min(14,radius*prevPinch/d));
+    prevPinch=d;
+  }
+},{passive:false});
+gc.addEventListener('touchend',()=>dragging=false);
+</script>
+</body>
+</html>
