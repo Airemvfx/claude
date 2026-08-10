@@ -3,6 +3,55 @@
    Grid is 1 cell = 1 world unit. Cell (i,j) -> world (i - w/2 + .5, j - h/2 + .5)
    ========================================================================== */
 
+
+/* --------------------------------------------------------------------------
+   Surface kits — which procedural pattern each biome uses for each surface,
+   as [patternId, cellsPerWorldUnit, normalStrength].
+   -------------------------------------------------------------------------- */
+const T_BRICK = (s, n) => [TEX.BRICK, s || 3.6, n == null ? .16 : n];
+const T_STONE = (s, n) => [TEX.STONE, s || 1.5, n == null ? .18 : n];
+const T_CONC = (s, n) => [TEX.CONCRETE, s || .8, n == null ? .08 : n];
+const T_METAL = (s, n) => [TEX.METAL, s || 1.1, n == null ? .15 : n];
+const T_TILE = (s, n) => [TEX.TILE, s || 1.5, n == null ? .11 : n];
+const T_GRIT = (s, n) => [TEX.GRIT, s || 1.1, n == null ? .10 : n];
+const T_PLANK = (s, n) => [TEX.PLANK, s || 3.2, n == null ? .15 : n];
+const T_LEAF = (s, n) => [TEX.FOLIAGE, s || 3.0, n == null ? .12 : n];
+
+const TEX_KITS = {
+  street: { wall: T_BRICK(), ground: T_GRIT(.9), road: T_CONC(), floor: T_TILE(1.3),
+            rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  street_night: { wall: T_BRICK(), ground: T_GRIT(.9), road: T_CONC(), floor: T_TILE(1.3),
+                  rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  dungeon: { wall: T_BRICK(3.0, .19), ground: T_STONE(1.2), road: T_STONE(1.2), floor: T_STONE(1.2),
+             rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  crypt: { wall: T_STONE(1.3, .2), ground: T_TILE(1.1), road: T_TILE(1.1), floor: T_TILE(1.1),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  lab: { wall: T_CONC(.55, .08), ground: T_TILE(1.1, .1), road: T_TILE(1.1, .1), floor: T_TILE(1.1, .1),
+         rock: T_CONC(), wood: T_METAL(), metal: T_METAL(1.4), leaf: T_LEAF() },
+  cathedral: { wall: T_STONE(1.1, .2), ground: T_TILE(.9), road: T_TILE(.9), floor: T_TILE(.9),
+               rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  sewer: { wall: T_BRICK(3.2, .2), ground: T_CONC(.6), road: T_CONC(.6), floor: T_CONC(.6),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  forest: { wall: T_STONE(1.2), ground: T_GRIT(1.3), road: T_GRIT(1.0), floor: T_PLANK(),
+            rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  swamp: { wall: T_STONE(1.2), ground: T_GRIT(1.4), road: T_GRIT(1.1), floor: T_PLANK(),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  waste: { wall: T_STONE(1.0), ground: T_GRIT(.8), road: T_GRIT(.7), floor: T_CONC(),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  spire: { wall: T_STONE(1.2, .2), ground: T_TILE(.8), road: T_TILE(.8), floor: T_TILE(.8),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  ice: { wall: T_STONE(1.0, .22), ground: T_CONC(.7, .1), road: T_CONC(.7, .1), floor: T_CONC(.7, .1),
+         rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+};
+function texKit(name) { return TEX_KITS[name] || TEX_KITS.street; }
+
+/** stamp a kit entry onto a material object */
+function useTex(m, t) {
+  if (!t) { m.tex = 0; return m; }
+  m.tex = t[0]; m.texScale = t[1]; m.texStr = t[2];
+  return m;
+}
+
 const WALL_H = 3.4;
 const TORCH_COL = [1.0, 0.52, 0.18];
 
@@ -10,6 +59,7 @@ class World {
   constructor(level, seed) {
     this.level = level;
     this.biome = BIOMES[level.biome];
+    this.kit = texKit(level.biome);
     this.rng = new RNG(seed);
     this.noise = makeNoise(seed ^ 0x9e37);
     const s = level.size | 0;
@@ -263,7 +313,7 @@ function addRubble(wld, R, x, z, n, col) {
     const s = rng.range(.22, .6);
     pushTilt(R, 'prism', rx, s * .35, rz, s * 1.6, s, s * 1.6,
       rng.range(-.2, .2), rng.range(0, TAU), rng.range(-.2, .2),
-      mat(shade(col, rng.range(.7, 1.1), rng), .95));
+      useTex(mat(shade(col, rng.range(.7, 1.1), rng), .95), wld.kit.rock));
   }
 }
 
@@ -274,7 +324,7 @@ function addTree(wld, R, x, z, scale, biome) {
   const s = scale || rng.range(.8, 1.15);
   const trunkH = 2.3 * s;
   pushMesh(R, 'cyl', x, trunkH / 2, z, .4 * s, trunkH, .4 * s, 0,
-    mat(shade(biome.propWood, rng.range(.7, 1.0), rng), .95));
+    useTex(mat(shade(biome.propWood, rng.range(.7, 1.0), rng), .95), wld.kit.wood));
   const fol = biome.foliage;
   const layers = 3;
   for (let i = 0; i < layers; i++) {
@@ -282,7 +332,7 @@ function addTree(wld, R, x, z, scale, biome) {
     const y = trunkH * .8 + t * 1.7 * s;
     const r = (1.9 - t * 1.15) * s;
     pushMesh(R, 'cone', x + rng.range(-.15, .15), y, z + rng.range(-.15, .15), r * 2, 1.5 * s, r * 2, rng.range(0, TAU),
-      mat(shade(fol, rng.range(.7, 1.15), rng), .96, null, 0, 2, .6));
+      useTex(mat(shade(fol, rng.range(.7, 1.15), rng), .96, null, 0, 2, .6), wld.kit.leaf));
   }
   // trunk blocks movement
   const [i, j] = wld.cellOf(x, z);
@@ -294,7 +344,7 @@ function addDeadTree(wld, R, x, z, scale, biome) {
   const s = scale || rng.range(.85, 1.2);
   const h = 3.3 * s;
   pushMesh(R, 'cyl', x, h / 2, z, .38 * s, h, .38 * s, 0,
-    mat(shade(biome.propWood, rng.range(.5, .85), rng), .97));
+    useTex(mat(shade(biome.propWood, rng.range(.5, .85), rng), .97), wld.kit.wood));
   for (let i = 0; i < 4; i++) {
     const a = rng.range(0, TAU), len = rng.range(1.2, 2.4) * s;
     const y = h * rng.range(.5, .95);
@@ -311,7 +361,7 @@ function addCar(wld, R, x, z, ry, biome) {
   const cols = [0x7a2c28, 0x2c3a52, 0x4a4a48, 0x5a5230, 0x30402c, 0x6a6a70];
   const body = shade(rng.pick(cols), rng.range(.6, 1.0), rng);
   const c = Math.cos(ry), s = Math.sin(ry);
-  pushBox(R, x, .62, z, 2.0, .78, 4.4, ry, mat(body, .55, null, .45));
+  pushBox(R, x, .62, z, 2.0, .78, 4.4, ry, useTex(mat(body, .55, null, .45), wld.kit.metal));
   pushBox(R, x - s * .3, 1.32, z - c * .3, 1.72, .78, 2.0, ry, mat(shade(0x14181c, 1, rng), .28, null, .3));
   pushBox(R, x, .28, z, 2.12, .32, 4.2, ry, mat(shade(0x1c1c1e, 1, rng), .9));
   for (const [ox, oz] of [[-1, 1.4], [1, 1.4], [-1, -1.4], [1, -1.4]]) {
@@ -336,6 +386,13 @@ function addContainer(wld, type, x, z, ry) {
 function buildGround(wld, R) {
   const B = wld.biome, rng = wld.rng, N = wld.noise;
   const T = 4;
+  // An apron well past the level bounds. The camera's top rays can reach
+  // beyond the map on big levels, and without this they hit empty space and
+  // leave a dead band across the top of the screen.
+  const apron = wld.w + 150;
+  const apronM = mat(shade(B.ground, .45, null), .96);
+  useTex(apronM, wld.kit.ground);
+  pushMesh(R, 'quad', 0, -0.06, 0, apron, 1, apron, 0, apronM);
   const groundM = mat([0, 0, 0], B.groundRough || .92);
   for (let tj = 0; tj < wld.h; tj += T) {
     for (let ti = 0; ti < wld.w; ti += T) {
@@ -349,11 +406,13 @@ function buildGround(wld, R) {
         if (wld.water[k]) water++;
       }
       const [wx, wz] = wld.worldOf(ti + T / 2 - .5, tj + T / 2 - .5);
-      let base;
-      if (road / tot > .45) base = B.road;
-      else if (inter / tot > .45) base = B.wall2;
-      else if (spec / tot > .45) base = B.floorSpecial != null ? B.floorSpecial : B.road;
-      else base = B.ground;
+      let base, t;
+      const K = wld.kit;
+      if (road / tot > .45) { base = B.road; t = K.road; }
+      else if (inter / tot > .45) { base = B.wall2; t = K.floor; }
+      else if (spec / tot > .45) { base = B.floorSpecial != null ? B.floorSpecial : B.road; t = K.road; }
+      else { base = B.ground; t = K.ground; }
+      useTex(groundM, t);
       // no per-tile jitter: the fragment shader adds continuous grain, and
       // random per-tile tint reads as an obvious checkerboard
       const nz = N.fbm(wx * .035, wz * .035, 3) * .5 + .5;
@@ -397,8 +456,9 @@ function buildWalls(wld, R, height, colA, colB) {
       const [, z0] = wld.worldOf(i, j);
       const cx = x0 + (len - 1) / 2, cz = z0;
       const hh = height * rng.range(.94, 1.06);
-      m.c = shade(rng.chance(.5) ? colA : colB, rng.range(.8, 1.15), rng);
+      m.c = shade(rng.chance(.5) ? colA : colB, rng.range(.86, 1.1), rng);
       m.rough = rng.range(.78, .98);
+      useTex(m, wld.kit.wall);
       pushBox(R, cx, hh / 2, cz, len, hh, 1.0, 0, m);
       i += len - 1;
     }
@@ -645,7 +705,7 @@ function genRooms(wld, R, opts) {
           if (rng.chance(.45)) continue;
           const [x, z] = wld.worldOf(i, j);
           pushMesh(R, opts.roundPillar ? 'cyl' : 'box', x, WALL_H / 2, z, 1.0, WALL_H, 1.0, 0,
-            mat(shade(B.wall, rng.range(.85, 1.05), rng), .82));
+            useTex(mat(shade(B.wall, rng.range(.85, 1.05), rng), .82), wld.kit.wall));
           setSolid(wld, i, j);
         }
       }
@@ -711,14 +771,15 @@ function defaultProp(wld, R, x, z, i, j) {
   if (t < .35) addRubble(wld, R, x, z, rng.int(2, 5), B.wall2);
   else if (t < .6) {
     pushBox(R, x, .4, z, rng.range(.8, 1.6), .8, rng.range(.8, 1.4), rng.range(0, TAU),
-      mat(shade(B.propWood, rng.range(.7, 1.05), rng), .88));
+      useTex(mat(shade(B.propWood, rng.range(.7, 1.05), rng), .88), wld.kit.wood));
     setSolid(wld, i, j, false);
   } else if (t < .78) {
-    pushMesh(R, 'cyl', x, .5, z, .7, 1.0, .7, 0, mat(shade(B.propWood, .8, rng), .9));
+    pushMesh(R, 'cyl', x, .5, z, .7, 1.0, .7, 0,
+      useTex(mat(shade(B.propWood, .8, rng), .9), wld.kit.metal));
     setSolid(wld, i, j, false);
   } else {
     pushMesh(R, 'prism', x, .3, z, rng.range(.8, 1.6), .6, rng.range(.8, 1.6), rng.range(0, TAU),
-      mat(shade(B.wall2, rng.range(.7, 1.1), rng), .95));
+      useTex(mat(shade(B.wall2, rng.range(.7, 1.1), rng), .95), wld.kit.rock));
   }
 }
 
@@ -728,7 +789,7 @@ function cryptProp(wld, R, x, z, i, j) {
   if (t < .45) {
     // sarcophagus
     pushBox(R, x, .45, z, 1.1, .9, 2.3, rng.chance(.5) ? 0 : Math.PI / 2,
-      mat(shade(B.wall, rng.range(.9, 1.1), rng), .78));
+      useTex(mat(shade(B.wall, rng.range(.9, 1.1), rng), .78), wld.kit.rock));
     pushBox(R, x, .95, z, 1.2, .16, 2.4, rng.chance(.5) ? 0 : Math.PI / 2,
       mat(shade(B.wall2, 1.05, rng), .7));
     setSolid(wld, i, j, false);
@@ -752,7 +813,8 @@ function labProp(wld, R, x, z, i, j) {
   const acc = hexLin(B.accent);
   if (t < .3) {
     // console
-    pushBox(R, x, .5, z, 1.5, 1.0, .8, rng.chance(.5) ? 0 : Math.PI / 2, mat(shade(0x7a828a, 1, rng), .35, null, .6));
+    pushBox(R, x, .5, z, 1.5, 1.0, .8, rng.chance(.5) ? 0 : Math.PI / 2,
+      useTex(mat(shade(0x7a828a, 1, rng), .35, null, .6), wld.kit.metal));
     pushBox(R, x, 1.06, z, 1.2, .1, .6, 0, mat([.05, .08, .1], .2, [acc[0] * 2.4, acc[1] * 2.4, acc[2] * 2.8], 0, 3));
     wld.lights.push({ x, y: 1.4, z, r: acc[0], g: acc[1], b: acc[2], i: 1.1, rad: 7, flicker: .1 });
     setSolid(wld, i, j, false);
@@ -764,7 +826,8 @@ function labProp(wld, R, x, z, i, j) {
     wld.lights.push({ x, y: 1.6, z, r: acc[0] * .7, g: acc[1], b: acc[2], i: 1.6, rad: 8, flicker: .18 });
     setSolid(wld, i, j, false);
   } else if (t < .8) {
-    pushBox(R, x, .45, z, 2.0, .9, .9, rng.chance(.5) ? 0 : Math.PI / 2, mat(shade(0x9aa2aa, 1, rng), .3, null, .55));
+    pushBox(R, x, .45, z, 2.0, .9, .9, rng.chance(.5) ? 0 : Math.PI / 2,
+      useTex(mat(shade(0x9aa2aa, 1, rng), .3, null, .55), wld.kit.metal));
     setSolid(wld, i, j, false);
   } else addRubble(wld, R, x, z, rng.int(2, 4), B.wall2);
 }
@@ -807,7 +870,8 @@ function cathedralProp(wld, R, x, z, i, j) {
   } else if (t < .8) {
     // statue
     pushMesh(R, 'cyl', x, .4, z, 1.0, .8, 1.0, 0, mat(shade(B.wall, 1.05, rng), .8));
-    pushBox(R, x, 1.5, z, .6, 1.6, .5, rng.range(0, TAU), mat(shade(B.wall, .95, rng), .82));
+    pushBox(R, x, 1.5, z, .6, 1.6, .5, rng.range(0, TAU),
+      useTex(mat(shade(B.wall, .95, rng), .82), wld.kit.rock));
     pushMesh(R, 'sphere', x, 2.5, z, .45, .5, .45, 0, mat(shade(B.wall, 1.0, rng), .8));
     setSolid(wld, i, j, false);
   } else addRubble(wld, R, x, z, rng.int(3, 6), B.wall2);
@@ -860,7 +924,7 @@ function genOrganic(wld, R, opts) {
     const hgt = border ? WALL_H + 2 : rng.range(1.6, 3.2);
     pushTilt(R, 'box', x, hgt / 2 - .2, z, rng.range(1.0, 1.5), hgt, rng.range(1.0, 1.5),
       rng.range(-.08, .08), rng.range(0, TAU), rng.range(-.08, .08),
-      mat(shade(opts.rockCol || B.wall, rng.range(.7, 1.1), rng), .95));
+      useTex(mat(shade(opts.rockCol || B.wall, rng.range(.7, 1.1), rng), .95), wld.kit.rock));
   }
 
   // vegetation / scatter
@@ -933,7 +997,8 @@ function ruinStruct(wld, R, ci, cj) {
     if (!wld.inB(i, j) || !wld.solid[wld.idx(i, j)]) continue;
     const [x, z] = wld.worldOf(i, j);
     const hh = rng.range(1.4, WALL_H);
-    pushBox(R, x, hh / 2, z, 1.0, hh, 1.0, 0, mat(shade(B.wall, rng.range(.75, 1.1), rng), .92));
+    pushBox(R, x, hh / 2, z, 1.0, hh, 1.0, 0,
+      useTex(mat(shade(B.wall, rng.range(.75, 1.1), rng), .92), wld.kit.wall));
   }
 }
 
@@ -942,7 +1007,8 @@ function wreckStruct(wld, R, ci, cj) {
   const [x, z] = wld.worldOf(ci, cj);
   const ry = rng.range(0, TAU);
   const len = rng.range(5, 11), wid = rng.range(2.6, 4);
-  pushBox(R, x, 1.1, z, wid, 2.2, len, ry, mat(shade(0x6a5a48, rng.range(.6, .9), rng), .8, null, .6));
+  pushBox(R, x, 1.1, z, wid, 2.2, len, ry,
+    useTex(mat(shade(0x6a5a48, rng.range(.6, .9), rng), .8, null, .6), wld.kit.metal));
   pushBox(R, x, 2.4, z, wid * .82, .6, len * .5, ry, mat(shade(0x54463a, .8, rng), .85, null, .5));
   const c = Math.cos(ry), s = Math.sin(ry);
   for (let dj = -Math.round(len / 2); dj <= Math.round(len / 2); dj++) {
@@ -965,10 +1031,12 @@ function hutStruct(wld, R, ci, cj) {
   for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
     pushMesh(R, 'cyl', x + dx, .8, z + dz, .3, 1.6, .3, 0, mat(shade(B.propWood, .7, rng), .95));
   }
-  pushBox(R, x, 1.7, z, 5.4, .3, 5.4, 0, mat(shade(B.propWood, .9, rng), .92));
+  pushBox(R, x, 1.7, z, 5.4, .3, 5.4, 0,
+    useTex(mat(shade(B.propWood, .9, rng), .92), wld.kit.wood));
   // walls
   for (const [dx, dz, sx, sz] of [[0, -2.6, 5.4, .3], [0, 2.6, 5.4, .3], [-2.6, 0, .3, 5.4]]) {
-    pushBox(R, x + dx, 2.7, z + dz, sx, 1.8, sz, 0, mat(shade(B.propWood, rng.range(.7, 1), rng), .93));
+    pushBox(R, x + dx, 2.7, z + dz, sx, 1.8, sz, 0,
+      useTex(mat(shade(B.propWood, rng.range(.7, 1), rng), .93), wld.kit.wood));
   }
   pushTilt(R, 'prism', x, 3.9, z, 6, 1.4, 6, 0, 0, 0, mat(shade(B.propWood, .6, rng), .95));
   for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {

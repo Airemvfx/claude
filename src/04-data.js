@@ -717,11 +717,11 @@ const LEVEL_BY_ID = Object.fromEntries(LEVELS.map(l => [l.id, l]));
    LOOT tables per container type. Weapon drops scale with level difficulty.
    -------------------------------------------------------------------------- */
 const CONTAINERS = {
-  crate: { name: 'WOODEN CRATE', color: 0x6b5236, w: 1.0, h: .8, weights: { ammo: 5, med: 2, weapon: 2, mod: 1, mana: 1 } },
-  locker: { name: 'STEEL LOCKER', color: 0x4a5560, w: .9, h: 1.9, metal: .6, weights: { weapon: 5, ammo: 4, mod: 2, med: 1, mana: 1 } },
-  medbox: { name: 'MEDICAL BOX', color: 0xd8d4cc, w: .8, h: .6, accent: 0xcc3333, weights: { med: 6, mod: 2, ammo: 1, mana: 2 } },
-  cache: { name: 'ARMS CACHE', color: 0x3c4a34, w: 1.4, h: .9, metal: .35, weights: { weapon: 6, ammo: 5, mod: 4, med: 2, mana: 2 } },
-  reliquary: { name: 'RELIQUARY', color: 0x6a5a34, w: 1.0, h: 1.3, metal: .5, accent: 0xffd070, weights: { mod: 6, weapon: 4, mana: 4, med: 2, ammo: 1 } },
+  crate: { name: 'WOODEN CRATE', color: 0x6b5236, w: 1.0, h: .8, tex: 2, texScale: 4.0, weights: { ammo: 5, med: 2, weapon: 2, mod: 1, mana: 1 } },
+  locker: { name: 'STEEL LOCKER', color: 0x4a5560, w: .9, h: 1.9, metal: .6, tex: 4, texScale: 1.8, weights: { weapon: 5, ammo: 4, mod: 2, med: 1, mana: 1 } },
+  medbox: { name: 'MEDICAL BOX', color: 0xd8d4cc, w: .8, h: .6, accent: 0xcc3333, tex: 4, texScale: 2.4, weights: { med: 6, mod: 2, ammo: 1, mana: 2 } },
+  cache: { name: 'ARMS CACHE', color: 0x3c4a34, w: 1.4, h: .9, metal: .35, tex: 4, texScale: 1.5, weights: { weapon: 6, ammo: 5, mod: 4, med: 2, mana: 2 } },
+  reliquary: { name: 'RELIQUARY', color: 0x6a5a34, w: 1.0, h: 1.3, metal: .5, accent: 0xffd070, tex: 8, texScale: 2.2, weights: { mod: 6, weapon: 4, mana: 4, med: 2, ammo: 1 } },
 };
 
 /** weapons that can spawn at a given difficulty */

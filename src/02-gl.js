@@ -261,7 +261,7 @@ function geoOcta() {
   return { verts: new Float32Array(v), idx: new Uint16Array(idx) };
 }
 
-const INSTANCE_FLOATS = 28;   // mat4(16) + color4 + emiss4 + params4
+const INSTANCE_FLOATS = 32;   // mat4(16) + color4 + emiss4 + params4 + tex4
 
 class Mesh {
   constructor(gl, geo, name) {
@@ -291,7 +291,7 @@ class Mesh {
     gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, S, 24);
     gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
     const IS = INSTANCE_FLOATS * 4;
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 8; i++) {
       const loc = 3 + i;
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, IS, i * 16);

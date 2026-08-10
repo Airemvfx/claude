@@ -33,7 +33,7 @@
     text-transform:uppercase;text-shadow:1px 1px 0 rgba(0,0,0,.9);}
   body:not(.playing) .hud{display:none;}
   body.mapopen #hudTopLeft,body.mapopen #hudBottom,body.mapopen .btn,
-  body.mapopen #stickL,body.mapopen #stickR{opacity:0;pointer-events:none;}
+  body.mapopen #stickL,body.mapopen #stickR,body.mapopen #muteBtn{opacity:0;pointer-events:none;}
   #hudTopLeft{top:calc(8px + env(safe-area-inset-top));left:10px;width:min(46vw,210px);
     transition:opacity .18s;}
   .bar{height:7px;background:rgba(0,0,0,.6);border:1px solid var(--edge);position:relative;
@@ -62,10 +62,43 @@
     text-transform:uppercase;text-shadow:1px 1px 0 rgba(0,0,0,.9);transition:opacity .18s;}
   #wpnName{font-size:12px;font-weight:bold;letter-spacing:.1em;color:var(--amber);}
   #wpnClass{font-size:8px;color:var(--dim);letter-spacing:.22em;}
-  #ammo{font-size:11px;color:var(--bone);margin-top:2px;letter-spacing:.12em;}
-  #ammo b{font-size:17px;}
-  #reload{width:96px;height:4px;background:rgba(0,0,0,.7);border:1px solid var(--edge);margin-top:4px;}
-  #reloadBar{height:100%;background:var(--amber);width:0;}
+  /* ---- animated ammo / mana bar ---- */
+  #ammoWrap{margin-top:5px;display:flex;align-items:center;gap:7px;
+    --ac1:#ffe9a8; --ac2:#d9a441; --ac3:#8c5a16; --acg:217,164,65;}
+  #ammoBar{position:relative;width:128px;height:14px;background:rgba(0,0,0,.75);
+    border:1.5px solid var(--edge);overflow:hidden;transform:skewX(-12deg);
+    box-shadow:inset 0 0 6px rgba(0,0,0,.9);}
+  #ammoBar>div{position:absolute;top:0;bottom:0;left:0;}
+  #ammoGhost{background:rgba(255,255,255,.3);width:0;
+    transition:width .5s cubic-bezier(.22,.7,.3,1) .12s;}
+  #ammoFill{width:0;background:linear-gradient(180deg,var(--ac1),var(--ac2) 42%,var(--ac3));
+    box-shadow:0 0 9px rgba(var(--acg),.6);transition:width .09s linear;}
+  #ammoTicks{left:0;right:0;width:auto;pointer-events:none;
+    background-image:repeating-linear-gradient(90deg,
+      rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(var(--seg) - 1.6px),
+      rgba(0,0,0,.8) calc(var(--seg) - 1.6px), rgba(0,0,0,.8) var(--seg));}
+  #ammoEdge{width:3px;background:#fff;opacity:0;
+    box-shadow:0 0 10px 3px rgba(255,255,255,.85);}
+  #ammoSweep{left:0;width:38%;opacity:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);}
+  #ammoNums{font-size:10px;color:var(--dim);letter-spacing:.1em;line-height:1;}
+  #ammoNums b{font-size:16px;color:var(--bone);}
+  @keyframes ammoEdgeFlash{from{opacity:1;}to{opacity:0;}}
+  #ammoEdge.flash{animation:ammoEdgeFlash .18s ease-out;}
+  @keyframes ammoSweepMove{from{transform:translateX(-110%);}to{transform:translateX(370%);}}
+  #ammoWrap.reloading #ammoSweep{opacity:1;animation:ammoSweepMove .85s linear infinite;}
+  #ammoWrap.reloading #ammoFill{transition:width .1s linear;}
+  #ammoWrap.reloading #ammoGhost{opacity:0;}
+  @keyframes ammoLowPulse{0%,100%{box-shadow:inset 0 0 6px rgba(0,0,0,.9);border-color:var(--edge);}
+    50%{box-shadow:inset 0 0 6px rgba(0,0,0,.9),0 0 9px rgba(217,72,59,.75);border-color:#d9483b;}}
+  #ammoWrap.low{--ac1:#ffcf8a;--ac2:#e0862c;--ac3:#8a4410;--acg:224,134,44;}
+  #ammoWrap.low #ammoBar{animation:ammoLowPulse 1s ease-in-out infinite;}
+  #ammoWrap.crit{--ac1:#ffb0a0;--ac2:#d9483b;--ac3:#6e1a12;--acg:217,72,59;}
+  #ammoWrap.crit #ammoBar{animation:ammoLowPulse .48s ease-in-out infinite;}
+  #ammoWrap.crit #ammoNums b{color:#d9483b;}
+  @media (prefers-reduced-motion:reduce){
+    #ammoWrap.low #ammoBar,#ammoWrap.crit #ammoBar,#ammoWrap.reloading #ammoSweep{animation:none;}
+  }
   #wbar{display:flex;gap:4px;margin-top:7px;pointer-events:auto;}
   .wslot{width:22px;height:22px;border:1.5px solid #4a4a3c;background:rgba(10,12,9,.7);
     color:#6a6a58;font-size:10px;display:flex;align-items:center;justify-content:center;
@@ -162,8 +195,16 @@
 <div id="hudBottom" class="hud">
   <div id="wpnName">M9 SIDEARM</div>
   <div id="wpnClass">PISTOL</div>
-  <div id="ammo"><b>15</b> / 60</div>
-  <div id="reload" style="display:none"><div id="reloadBar"></div></div>
+  <div id="ammoWrap">
+    <div id="ammoBar">
+      <div id="ammoGhost"></div>
+      <div id="ammoFill"></div>
+      <div id="ammoSweep"></div>
+      <div id="ammoEdge"></div>
+      <div id="ammoTicks"></div>
+    </div>
+    <div id="ammoNums"><b id="ammoMag">15</b> <span id="ammoRes">60</span></div>
+  </div>
   <div id="wbar"></div>
 </div>
 
@@ -570,6 +611,7 @@ layout(location=6) in vec4 iM3;
 layout(location=7) in vec4 iColor;    // rgb + roughness
 layout(location=8) in vec4 iEmiss;    // rgb + metalness
 layout(location=9) in vec4 iParams;   // matType, anim, aoMul, alpha
+layout(location=10) in vec4 iTex;     // texId, texScale, texStrength, texOffset
 
 mat4 instMat(){ return mat4(iM0,iM1,iM2,iM3); }
 
@@ -779,6 +821,7 @@ out vec2 vUV;
 out vec4 vColor;
 out vec4 vEmiss;
 out vec4 vParams;
+out vec4 vTex;
 out vec3 vLocal;
 void main(){
   mat4 M = instMat();
@@ -788,7 +831,7 @@ void main(){
   vLocal = aPos;
   vNormal = normalize(instNormalMat(M) * aNormal);
   vUV = aUV;
-  vColor = iColor; vEmiss = iEmiss; vParams = iParams;
+  vColor = iColor; vEmiss = iEmiss; vParams = iParams; vTex = iTex;
   gl_Position = uVP * vec4(wp,1.0);
 }`;
 
@@ -802,6 +845,7 @@ in vec2 vUV;
 in vec4 vColor;
 in vec4 vEmiss;
 in vec4 vParams;
+in vec4 vTex;
 in vec3 vLocal;
 
 uniform vec3 uCamPos;
@@ -812,7 +856,7 @@ uniform sampler2DShadow uShadowMap;
 uniform sampler2D uGI;         // rgb = bounced irradiance, a = sky visibility
 uniform sampler2D uAO;
 uniform vec4 uGIRect;          // originX, originZ, 1/sizeX, 1/sizeZ
-uniform float uGIStrength, uShadowTexel, uTime, uAOEnabled;
+uniform float uGIStrength, uShadowTexel, uTime, uAOEnabled, uDetail;
 uniform vec2 uScreenSize;
 uniform vec3 uFogColor;
 uniform vec2 uFog;             // density, heightFalloff
@@ -835,6 +879,149 @@ float vnoise3(vec3 p){
              mix(mix(n001,n101,f.x), mix(n011,n111,f.x), f.y), f.z);
 }
 
+/* ======================================================================
+   Procedural surface detail.
+   Patterns are evaluated in world space and projected on the dominant
+   axis, so the same brick or plank size holds no matter how an instance
+   is scaled, and neighbouring instances line up into continuous walls.
+   Each pattern gives a height (differenced into a normal perturbation)
+   and a brightness/roughness multiplier layered over the biome colour.
+   ====================================================================== */
+float th21(vec2 p){ p = fract(p*vec2(443.897,441.423)); p += dot(p,p+19.19); return fract(p.x*p.y); }
+vec2 th22(vec2 p){ return vec2(th21(p), th21(p+19.73)); }
+float tvn(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(mix(th21(i), th21(i+vec2(1,0)), f.x),
+             mix(th21(i+vec2(0,1)), th21(i+vec2(1,1)), f.x), f.y);
+}
+float tfbm(vec2 p){
+  float s=0.0, a=0.5;
+  for(int i=0;i<3;i++){ s += a*tvn(p); p*=2.07; a*=0.5; }
+  return s;
+}
+// running-bond cell: bricks are twice as long as they are tall
+vec2 brickCell(vec2 uv, out vec2 f){
+  vec2 b = vec2(uv.x*0.5, uv.y);
+  b.x += mod(floor(b.y), 2.0)*0.5;
+  f = fract(b);
+  return floor(b);
+}
+
+float dTexH(int id, vec2 uv){
+  if(id==1){                                    // brick
+    vec2 f; brickCell(uv, f);
+    float m = smoothstep(0.0,0.07,f.x)*smoothstep(1.0,0.93,f.x)
+            * smoothstep(0.0,0.13,f.y)*smoothstep(1.0,0.87,f.y);
+    return m*0.8 + tvn(uv*9.0)*0.2;
+  }
+  if(id==2){                                    // planks
+    float f = fract(uv.y);
+    float seam = smoothstep(0.0,0.08,f)*smoothstep(1.0,0.92,f);
+    float grain = tvn(vec2(uv.x*2.5, floor(uv.y)*13.0 + uv.y*2.0));
+    float knot = smoothstep(0.88,1.0, tvn(vec2(uv.x*0.7, floor(uv.y)*5.0)));
+    return seam*0.72 + grain*0.28 - knot*0.4;
+  }
+  if(id==3){                                    // concrete: blotches + cracks
+    float n = tfbm(uv*1.5);
+    float cr = 1.0 - smoothstep(0.0,0.06, abs(tfbm(uv*0.85+11.3)-0.5));
+    return n - cr*0.55;
+  }
+  if(id==4){                                    // metal panels + rivets
+    vec2 f = fract(uv);
+    float seam = smoothstep(0.0,0.05,f.x)*smoothstep(1.0,0.95,f.x)
+               * smoothstep(0.0,0.05,f.y)*smoothstep(1.0,0.95,f.y);
+    vec2 r = abs(f-0.5)*2.0;
+    float rv = 1.0 - smoothstep(0.09,0.15, length(max(r-0.74, 0.0)));
+    return seam*0.78 + rv*0.32 + tvn(vec2(uv.x*34.0, uv.y*2.0))*0.1;
+  }
+  if(id==5){                                    // tiles
+    vec2 f = fract(uv);
+    float g = smoothstep(0.0,0.055,f.x)*smoothstep(1.0,0.945,f.x)
+            * smoothstep(0.0,0.055,f.y)*smoothstep(1.0,0.945,f.y);
+    return g*0.84 + tvn(uv*13.0)*0.16;
+  }
+  if(id==6){                                    // grit / gravel ground
+    return tfbm(uv*2.2)*0.62 + tvn(uv*7.0)*0.38;
+  }
+  if(id==7){                                    // foliage mottle
+    return tvn(uv*6.0)*0.55 + tvn(uv*17.0)*0.45;
+  }
+  if(id==8){                                    // irregular stone blocks
+    vec2 c = floor(uv), f = fract(uv);
+    vec2 j = th22(c)*0.3 - 0.15;
+    vec2 d = abs(f-0.5-j);
+    return smoothstep(0.5,0.4, max(d.x,d.y))*0.8 + tvn(uv*8.0)*0.2;
+  }
+  return 0.0;
+}
+
+// brightness multiplier + roughness multiplier
+float dTexTint(int id, vec2 uv, out float rmul){
+  rmul = 1.0;
+  if(id==1){
+    vec2 f; vec2 c = brickCell(uv, f);
+    float m = smoothstep(0.0,0.07,f.x)*smoothstep(1.0,0.93,f.x)
+            * smoothstep(0.0,0.13,f.y)*smoothstep(1.0,0.87,f.y);
+    float brick = 0.72 + th21(c)*0.55;
+    rmul = mix(1.22, 0.92, m);
+    return mix(1.18, brick, m);                 // mortar is paler and rougher
+  }
+  if(id==2){
+    float p = floor(uv.y);
+    float f = fract(uv.y);
+    float seam = smoothstep(0.0,0.08,f)*smoothstep(1.0,0.92,f);
+    float plank = 0.78 + th21(vec2(p,3.0))*0.42;
+    float grain = 0.86 + tvn(vec2(uv.x*2.5, p*13.0))*0.28;
+    rmul = mix(1.15, 0.95, seam);
+    return mix(0.6, plank*grain, seam);
+  }
+  if(id==3){
+    float n = tfbm(uv*1.5);
+    float cr = 1.0 - smoothstep(0.0,0.06, abs(tfbm(uv*0.85+11.3)-0.5));
+    rmul = 1.0 + cr*0.22;
+    return (0.88 + n*0.24) * (1.0 - cr*0.30);
+  }
+  if(id==4){
+    vec2 f = fract(uv);
+    vec2 r = abs(f-0.5)*2.0;
+    float rv = 1.0 - smoothstep(0.09,0.15, length(max(r-0.74, 0.0)));
+    float seam = smoothstep(0.0,0.05,f.x)*smoothstep(1.0,0.95,f.x)
+               * smoothstep(0.0,0.05,f.y)*smoothstep(1.0,0.95,f.y);
+    float panel = 0.86 + th21(floor(uv))*0.26;
+    float brush = 0.92 + tvn(vec2(uv.x*34.0, uv.y*2.0))*0.16;
+    rmul = mix(1.1, 0.82, seam) * (1.0 - rv*0.25);
+    return mix(0.55, panel*brush, seam) + rv*0.22;
+  }
+  if(id==5){
+    vec2 f = fract(uv);
+    float g = smoothstep(0.0,0.055,f.x)*smoothstep(1.0,0.945,f.x)
+            * smoothstep(0.0,0.055,f.y)*smoothstep(1.0,0.945,f.y);
+    float tile = 0.84 + th21(floor(uv))*0.34;
+    rmul = mix(1.3, 0.78, g);
+    return mix(0.72, tile, g);
+  }
+  if(id==6){
+    float n = tfbm(uv*2.2);
+    rmul = 1.04 + n*0.08;
+    return 0.84 + n*0.32;
+  }
+  if(id==7){
+    float n = tvn(uv*6.0)*0.6 + tvn(uv*17.0)*0.4;
+    rmul = 1.0;
+    return 0.7 + n*0.62;
+  }
+  if(id==8){
+    vec2 c = floor(uv), f = fract(uv);
+    vec2 j = th22(c)*0.3 - 0.15;
+    vec2 d = abs(f-0.5-j);
+    float m = smoothstep(0.5,0.4, max(d.x,d.y));
+    rmul = mix(1.2, 0.95, m);
+    return mix(1.1, 0.7 + th21(c)*0.6, m);
+  }
+  return 1.0;
+}
+
 float D_GGX(float NoH, float a){
   float a2 = a*a;
   float d = NoH*NoH*(a2-1.0)+1.0;
@@ -851,14 +1038,19 @@ vec3 F_Schlick(vec3 f0, float u){ return f0 + (1.0-f0)*pow(1.0-u, 5.0); }
 float sampleShadow(vec3 wp, float NoL){
   vec4 lp = uLightVP * vec4(wp, 1.0);
   vec3 pc = lp.xyz / lp.w * 0.5 + 0.5;
-  if(pc.x<0.005||pc.x>0.995||pc.y<0.005||pc.y>0.995||pc.z>0.999) return 1.0;
+  if(pc.x<0.0||pc.x>1.0||pc.y<0.0||pc.y>1.0||pc.z>0.999) return 1.0;
   float bias = mix(0.0016, 0.00035, NoL);
   pc.z -= bias;
   float s = 0.0;
   // 5-tap poisson PCF
   const vec2 P[5] = vec2[5](vec2(0.0,0.0), vec2(0.94,0.19), vec2(-0.72,0.61), vec2(-0.35,-0.87), vec2(0.51,-0.72));
   for(int i=0;i<5;i++) s += texture(uShadowMap, vec3(pc.xy + P[i]*uShadowTexel*1.4, pc.z));
-  return s / 5.0;
+  s /= 5.0;
+  // dissolve toward "lit" at the edge of the map, otherwise the boundary
+  // draws a hard rectangle across the ground
+  vec2 ec = abs(pc.xy - 0.5) * 2.0;
+  float edge = 1.0 - smoothstep(0.80, 0.99, max(ec.x, ec.y));
+  return mix(1.0, s, edge);
 }
 
 void main(){
@@ -872,10 +1064,42 @@ void main(){
   vec3 emissive = vEmiss.rgb;
   float alpha = vParams.w;
 
-  // ---- procedural surface detail: breaks up flat faces ----
-  float grain = vnoise3(vWorld * 3.1) * 0.5 + vnoise3(vWorld * 11.0) * 0.28 + vnoise3(vWorld*37.0)*0.12;
-  albedo *= 0.82 + grain * 0.36;
-  rough = clamp(rough * (0.86 + grain * 0.3), 0.045, 1.0);
+  // ---- procedural surface detail ----
+  float grain = vnoise3(vWorld * 3.1) * 0.5 + vnoise3(vWorld * 13.0) * 0.5;
+  albedo *= 0.9 + grain * 0.2;
+  rough = clamp(rough * (0.92 + grain * 0.16), 0.045, 1.0);
+
+  int texId = int(vTex.x + 0.5);
+  if(texId > 0 && uDetail > 0.5){
+    // project on the dominant axis so scale is world-consistent
+    vec3 an = abs(N);
+    vec2 uv; vec3 Tt, Bt;
+    if(an.y >= an.x && an.y >= an.z){ uv = vWorld.xz; Tt = vec3(1,0,0); Bt = vec3(0,0,1); }
+    else if(an.x >= an.z){ uv = vWorld.zy; Tt = vec3(0,0,1); Bt = vec3(0,1,0); }
+    else { uv = vWorld.xy; Tt = vec3(1,0,0); Bt = vec3(0,1,0); }
+    uv = uv * vTex.y + vTex.w;
+
+    // Procedural patterns have no mip chain, so they alias hard once a cell
+    // shrinks below a pixel. Measure the on-screen cell size and dissolve the
+    // pattern back to flat before it can shimmer.
+    float cellPx = max(fwidth(uv.x), fwidth(uv.y));
+    float fade = 1.0 - smoothstep(0.30, 0.85, cellPx);
+
+    if(fade > 0.01){
+      float rmul;
+      float tint = dTexTint(texId, uv, rmul);
+      albedo *= mix(1.0, tint, fade);
+      rough = clamp(rough * mix(1.0, rmul, fade), 0.045, 1.0);
+
+      // finite-difference the height field into a normal perturbation
+      float e = 0.45;
+      float h0 = dTexH(texId, uv);
+      float hx = dTexH(texId, uv + vec2(e, 0.0));
+      float hy = dTexH(texId, uv + vec2(0.0, e));
+      vec2 g2 = vec2(hx - h0, hy - h0) / e;
+      N = normalize(N - (Tt*g2.x + Bt*g2.y) * vTex.z * fade);
+    }
+  }
 
   if(matType > 0.5 && matType < 1.5){          // water: animated ripple normal
     float w1 = sin(vWorld.x*2.2 + uTime*1.6) * cos(vWorld.z*1.9 - uTime*1.1);
@@ -1118,7 +1342,7 @@ void main(){
   float r2 = dot(fromCenter, fromCenter);
 
   // barrel-ish chromatic aberration, stronger at edges & when hurt
-  float ca = (0.0016 + uChroma * 0.012) * (0.25 + r2*3.0);
+  float ca = (0.0007 + uChroma * 0.012) * (0.25 + r2*3.0);
   vec3 col;
   col.r = texture(uScene, uv - fromCenter*ca).r;
   col.g = texture(uScene, uv).g;
@@ -1419,7 +1643,7 @@ function geoOcta() {
   return { verts: new Float32Array(v), idx: new Uint16Array(idx) };
 }
 
-const INSTANCE_FLOATS = 28;   // mat4(16) + color4 + emiss4 + params4
+const INSTANCE_FLOATS = 32;   // mat4(16) + color4 + emiss4 + params4 + tex4
 
 class Mesh {
   constructor(gl, geo, name) {
@@ -1449,7 +1673,7 @@ class Mesh {
     gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, S, 24);
     gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
     const IS = INSTANCE_FLOATS * 4;
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 8; i++) {
       const loc = 3 + i;
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, IS, i * 16);
@@ -1529,13 +1753,20 @@ const MESH_IDS = ['box', 'cyl', 'cone', 'sphere', 'plane', 'prism', 'octa', 'qua
 const CHUNK_SIZE = 26;
 
 /** default material — game code passes partial overrides */
-function mat(c, rough, e, metal, mt, anim, ao, alpha) {
+function mat(c, rough, e, metal, mt, anim, ao, alpha, tex, texScale, texStr) {
   return {
     c: c || [1, 1, 1], rough: rough == null ? 0.8 : rough,
     e: e || null, metal: metal || 0, mt: mt || 0,
     anim: anim || 0, ao: ao == null ? 1 : ao, alpha: alpha == null ? 1 : alpha,
+    tex: tex || 0, texScale: texScale || 1, texStr: texStr == null ? 1 : texStr, texOff: 0,
   };
 }
+
+/** surface pattern ids, matched to dTexH/dTexTint in the shader */
+const TEX = {
+  NONE: 0, BRICK: 1, PLANK: 2, CONCRETE: 3, METAL: 4,
+  TILE: 5, GRIT: 6, FOLIAGE: 7, STONE: 8,
+};
 
 class Renderer {
   constructor(canvas) {
@@ -1552,7 +1783,7 @@ class Renderer {
     this.hasFloatRT = !!this.extFloat;
 
     this.quality = {
-      shadowSize: 1536, ssao: true, bloom: true, renderScale: 1,
+      shadowSize: 1536, ssao: true, bloom: true, detail: true, renderScale: 1,
       maxParticles: 3000, soft: true,
     };
 
@@ -1828,6 +2059,8 @@ class Renderer {
     else { dst[o + 20] = 0; dst[o + 21] = 0; dst[o + 22] = 0; }
     dst[o + 23] = mt.metal;
     dst[o + 24] = mt.mt; dst[o + 25] = mt.anim; dst[o + 26] = mt.ao; dst[o + 27] = mt.alpha;
+    dst[o + 28] = mt.tex || 0; dst[o + 29] = mt.texScale || 1;
+    dst[o + 30] = mt.texStr == null ? 1 : mt.texStr; dst[o + 31] = mt.texOff || 0;
   }
 
   /* -------------------------- dynamic pushes ------------------------- */
@@ -2157,6 +2390,7 @@ class Renderer {
       .f('uShadowTexel', 1 / this.shadowSize)
       .f('uTime', this.time)
       .f('uAOEnabled', this.quality.ssao ? 1 : 0)
+      .f('uDetail', this.quality.detail ? 1 : 0)
       .v2('uScreenSize', this.W, this.H)
       .v3a('uFogColor', env.fogColor)
       .v2('uFog', env.fogDensity, env.fogHeight)
@@ -2965,11 +3199,11 @@ const LEVEL_BY_ID = Object.fromEntries(LEVELS.map(l => [l.id, l]));
    LOOT tables per container type. Weapon drops scale with level difficulty.
    -------------------------------------------------------------------------- */
 const CONTAINERS = {
-  crate: { name: 'WOODEN CRATE', color: 0x6b5236, w: 1.0, h: .8, weights: { ammo: 5, med: 2, weapon: 2, mod: 1, mana: 1 } },
-  locker: { name: 'STEEL LOCKER', color: 0x4a5560, w: .9, h: 1.9, metal: .6, weights: { weapon: 5, ammo: 4, mod: 2, med: 1, mana: 1 } },
-  medbox: { name: 'MEDICAL BOX', color: 0xd8d4cc, w: .8, h: .6, accent: 0xcc3333, weights: { med: 6, mod: 2, ammo: 1, mana: 2 } },
-  cache: { name: 'ARMS CACHE', color: 0x3c4a34, w: 1.4, h: .9, metal: .35, weights: { weapon: 6, ammo: 5, mod: 4, med: 2, mana: 2 } },
-  reliquary: { name: 'RELIQUARY', color: 0x6a5a34, w: 1.0, h: 1.3, metal: .5, accent: 0xffd070, weights: { mod: 6, weapon: 4, mana: 4, med: 2, ammo: 1 } },
+  crate: { name: 'WOODEN CRATE', color: 0x6b5236, w: 1.0, h: .8, tex: 2, texScale: 4.0, weights: { ammo: 5, med: 2, weapon: 2, mod: 1, mana: 1 } },
+  locker: { name: 'STEEL LOCKER', color: 0x4a5560, w: .9, h: 1.9, metal: .6, tex: 4, texScale: 1.8, weights: { weapon: 5, ammo: 4, mod: 2, med: 1, mana: 1 } },
+  medbox: { name: 'MEDICAL BOX', color: 0xd8d4cc, w: .8, h: .6, accent: 0xcc3333, tex: 4, texScale: 2.4, weights: { med: 6, mod: 2, ammo: 1, mana: 2 } },
+  cache: { name: 'ARMS CACHE', color: 0x3c4a34, w: 1.4, h: .9, metal: .35, tex: 4, texScale: 1.5, weights: { weapon: 6, ammo: 5, mod: 4, med: 2, mana: 2 } },
+  reliquary: { name: 'RELIQUARY', color: 0x6a5a34, w: 1.0, h: 1.3, metal: .5, accent: 0xffd070, tex: 8, texScale: 2.2, weights: { mod: 6, weapon: 4, mana: 4, med: 2, ammo: 1 } },
 };
 
 /** weapons that can spawn at a given difficulty */
@@ -2987,6 +3221,55 @@ function lootModPool(diff) {
    Grid is 1 cell = 1 world unit. Cell (i,j) -> world (i - w/2 + .5, j - h/2 + .5)
    ========================================================================== */
 
+
+/* --------------------------------------------------------------------------
+   Surface kits — which procedural pattern each biome uses for each surface,
+   as [patternId, cellsPerWorldUnit, normalStrength].
+   -------------------------------------------------------------------------- */
+const T_BRICK = (s, n) => [TEX.BRICK, s || 3.6, n == null ? .16 : n];
+const T_STONE = (s, n) => [TEX.STONE, s || 1.5, n == null ? .18 : n];
+const T_CONC = (s, n) => [TEX.CONCRETE, s || .8, n == null ? .08 : n];
+const T_METAL = (s, n) => [TEX.METAL, s || 1.1, n == null ? .15 : n];
+const T_TILE = (s, n) => [TEX.TILE, s || 1.5, n == null ? .11 : n];
+const T_GRIT = (s, n) => [TEX.GRIT, s || 1.1, n == null ? .10 : n];
+const T_PLANK = (s, n) => [TEX.PLANK, s || 3.2, n == null ? .15 : n];
+const T_LEAF = (s, n) => [TEX.FOLIAGE, s || 3.0, n == null ? .12 : n];
+
+const TEX_KITS = {
+  street: { wall: T_BRICK(), ground: T_GRIT(.9), road: T_CONC(), floor: T_TILE(1.3),
+            rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  street_night: { wall: T_BRICK(), ground: T_GRIT(.9), road: T_CONC(), floor: T_TILE(1.3),
+                  rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  dungeon: { wall: T_BRICK(3.0, .19), ground: T_STONE(1.2), road: T_STONE(1.2), floor: T_STONE(1.2),
+             rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  crypt: { wall: T_STONE(1.3, .2), ground: T_TILE(1.1), road: T_TILE(1.1), floor: T_TILE(1.1),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  lab: { wall: T_CONC(.55, .08), ground: T_TILE(1.1, .1), road: T_TILE(1.1, .1), floor: T_TILE(1.1, .1),
+         rock: T_CONC(), wood: T_METAL(), metal: T_METAL(1.4), leaf: T_LEAF() },
+  cathedral: { wall: T_STONE(1.1, .2), ground: T_TILE(.9), road: T_TILE(.9), floor: T_TILE(.9),
+               rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  sewer: { wall: T_BRICK(3.2, .2), ground: T_CONC(.6), road: T_CONC(.6), floor: T_CONC(.6),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  forest: { wall: T_STONE(1.2), ground: T_GRIT(1.3), road: T_GRIT(1.0), floor: T_PLANK(),
+            rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  swamp: { wall: T_STONE(1.2), ground: T_GRIT(1.4), road: T_GRIT(1.1), floor: T_PLANK(),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  waste: { wall: T_STONE(1.0), ground: T_GRIT(.8), road: T_GRIT(.7), floor: T_CONC(),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  spire: { wall: T_STONE(1.2, .2), ground: T_TILE(.8), road: T_TILE(.8), floor: T_TILE(.8),
+           rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+  ice: { wall: T_STONE(1.0, .22), ground: T_CONC(.7, .1), road: T_CONC(.7, .1), floor: T_CONC(.7, .1),
+         rock: T_STONE(), wood: T_PLANK(), metal: T_METAL(), leaf: T_LEAF() },
+};
+function texKit(name) { return TEX_KITS[name] || TEX_KITS.street; }
+
+/** stamp a kit entry onto a material object */
+function useTex(m, t) {
+  if (!t) { m.tex = 0; return m; }
+  m.tex = t[0]; m.texScale = t[1]; m.texStr = t[2];
+  return m;
+}
+
 const WALL_H = 3.4;
 const TORCH_COL = [1.0, 0.52, 0.18];
 
@@ -2994,6 +3277,7 @@ class World {
   constructor(level, seed) {
     this.level = level;
     this.biome = BIOMES[level.biome];
+    this.kit = texKit(level.biome);
     this.rng = new RNG(seed);
     this.noise = makeNoise(seed ^ 0x9e37);
     const s = level.size | 0;
@@ -3247,7 +3531,7 @@ function addRubble(wld, R, x, z, n, col) {
     const s = rng.range(.22, .6);
     pushTilt(R, 'prism', rx, s * .35, rz, s * 1.6, s, s * 1.6,
       rng.range(-.2, .2), rng.range(0, TAU), rng.range(-.2, .2),
-      mat(shade(col, rng.range(.7, 1.1), rng), .95));
+      useTex(mat(shade(col, rng.range(.7, 1.1), rng), .95), wld.kit.rock));
   }
 }
 
@@ -3258,7 +3542,7 @@ function addTree(wld, R, x, z, scale, biome) {
   const s = scale || rng.range(.8, 1.15);
   const trunkH = 2.3 * s;
   pushMesh(R, 'cyl', x, trunkH / 2, z, .4 * s, trunkH, .4 * s, 0,
-    mat(shade(biome.propWood, rng.range(.7, 1.0), rng), .95));
+    useTex(mat(shade(biome.propWood, rng.range(.7, 1.0), rng), .95), wld.kit.wood));
   const fol = biome.foliage;
   const layers = 3;
   for (let i = 0; i < layers; i++) {
@@ -3266,7 +3550,7 @@ function addTree(wld, R, x, z, scale, biome) {
     const y = trunkH * .8 + t * 1.7 * s;
     const r = (1.9 - t * 1.15) * s;
     pushMesh(R, 'cone', x + rng.range(-.15, .15), y, z + rng.range(-.15, .15), r * 2, 1.5 * s, r * 2, rng.range(0, TAU),
-      mat(shade(fol, rng.range(.7, 1.15), rng), .96, null, 0, 2, .6));
+      useTex(mat(shade(fol, rng.range(.7, 1.15), rng), .96, null, 0, 2, .6), wld.kit.leaf));
   }
   // trunk blocks movement
   const [i, j] = wld.cellOf(x, z);
@@ -3278,7 +3562,7 @@ function addDeadTree(wld, R, x, z, scale, biome) {
   const s = scale || rng.range(.85, 1.2);
   const h = 3.3 * s;
   pushMesh(R, 'cyl', x, h / 2, z, .38 * s, h, .38 * s, 0,
-    mat(shade(biome.propWood, rng.range(.5, .85), rng), .97));
+    useTex(mat(shade(biome.propWood, rng.range(.5, .85), rng), .97), wld.kit.wood));
   for (let i = 0; i < 4; i++) {
     const a = rng.range(0, TAU), len = rng.range(1.2, 2.4) * s;
     const y = h * rng.range(.5, .95);
@@ -3295,7 +3579,7 @@ function addCar(wld, R, x, z, ry, biome) {
   const cols = [0x7a2c28, 0x2c3a52, 0x4a4a48, 0x5a5230, 0x30402c, 0x6a6a70];
   const body = shade(rng.pick(cols), rng.range(.6, 1.0), rng);
   const c = Math.cos(ry), s = Math.sin(ry);
-  pushBox(R, x, .62, z, 2.0, .78, 4.4, ry, mat(body, .55, null, .45));
+  pushBox(R, x, .62, z, 2.0, .78, 4.4, ry, useTex(mat(body, .55, null, .45), wld.kit.metal));
   pushBox(R, x - s * .3, 1.32, z - c * .3, 1.72, .78, 2.0, ry, mat(shade(0x14181c, 1, rng), .28, null, .3));
   pushBox(R, x, .28, z, 2.12, .32, 4.2, ry, mat(shade(0x1c1c1e, 1, rng), .9));
   for (const [ox, oz] of [[-1, 1.4], [1, 1.4], [-1, -1.4], [1, -1.4]]) {
@@ -3320,6 +3604,13 @@ function addContainer(wld, type, x, z, ry) {
 function buildGround(wld, R) {
   const B = wld.biome, rng = wld.rng, N = wld.noise;
   const T = 4;
+  // An apron well past the level bounds. The camera's top rays can reach
+  // beyond the map on big levels, and without this they hit empty space and
+  // leave a dead band across the top of the screen.
+  const apron = wld.w + 150;
+  const apronM = mat(shade(B.ground, .45, null), .96);
+  useTex(apronM, wld.kit.ground);
+  pushMesh(R, 'quad', 0, -0.06, 0, apron, 1, apron, 0, apronM);
   const groundM = mat([0, 0, 0], B.groundRough || .92);
   for (let tj = 0; tj < wld.h; tj += T) {
     for (let ti = 0; ti < wld.w; ti += T) {
@@ -3333,11 +3624,13 @@ function buildGround(wld, R) {
         if (wld.water[k]) water++;
       }
       const [wx, wz] = wld.worldOf(ti + T / 2 - .5, tj + T / 2 - .5);
-      let base;
-      if (road / tot > .45) base = B.road;
-      else if (inter / tot > .45) base = B.wall2;
-      else if (spec / tot > .45) base = B.floorSpecial != null ? B.floorSpecial : B.road;
-      else base = B.ground;
+      let base, t;
+      const K = wld.kit;
+      if (road / tot > .45) { base = B.road; t = K.road; }
+      else if (inter / tot > .45) { base = B.wall2; t = K.floor; }
+      else if (spec / tot > .45) { base = B.floorSpecial != null ? B.floorSpecial : B.road; t = K.road; }
+      else { base = B.ground; t = K.ground; }
+      useTex(groundM, t);
       // no per-tile jitter: the fragment shader adds continuous grain, and
       // random per-tile tint reads as an obvious checkerboard
       const nz = N.fbm(wx * .035, wz * .035, 3) * .5 + .5;
@@ -3381,8 +3674,9 @@ function buildWalls(wld, R, height, colA, colB) {
       const [, z0] = wld.worldOf(i, j);
       const cx = x0 + (len - 1) / 2, cz = z0;
       const hh = height * rng.range(.94, 1.06);
-      m.c = shade(rng.chance(.5) ? colA : colB, rng.range(.8, 1.15), rng);
+      m.c = shade(rng.chance(.5) ? colA : colB, rng.range(.86, 1.1), rng);
       m.rough = rng.range(.78, .98);
+      useTex(m, wld.kit.wall);
       pushBox(R, cx, hh / 2, cz, len, hh, 1.0, 0, m);
       i += len - 1;
     }
@@ -3629,7 +3923,7 @@ function genRooms(wld, R, opts) {
           if (rng.chance(.45)) continue;
           const [x, z] = wld.worldOf(i, j);
           pushMesh(R, opts.roundPillar ? 'cyl' : 'box', x, WALL_H / 2, z, 1.0, WALL_H, 1.0, 0,
-            mat(shade(B.wall, rng.range(.85, 1.05), rng), .82));
+            useTex(mat(shade(B.wall, rng.range(.85, 1.05), rng), .82), wld.kit.wall));
           setSolid(wld, i, j);
         }
       }
@@ -3695,14 +3989,15 @@ function defaultProp(wld, R, x, z, i, j) {
   if (t < .35) addRubble(wld, R, x, z, rng.int(2, 5), B.wall2);
   else if (t < .6) {
     pushBox(R, x, .4, z, rng.range(.8, 1.6), .8, rng.range(.8, 1.4), rng.range(0, TAU),
-      mat(shade(B.propWood, rng.range(.7, 1.05), rng), .88));
+      useTex(mat(shade(B.propWood, rng.range(.7, 1.05), rng), .88), wld.kit.wood));
     setSolid(wld, i, j, false);
   } else if (t < .78) {
-    pushMesh(R, 'cyl', x, .5, z, .7, 1.0, .7, 0, mat(shade(B.propWood, .8, rng), .9));
+    pushMesh(R, 'cyl', x, .5, z, .7, 1.0, .7, 0,
+      useTex(mat(shade(B.propWood, .8, rng), .9), wld.kit.metal));
     setSolid(wld, i, j, false);
   } else {
     pushMesh(R, 'prism', x, .3, z, rng.range(.8, 1.6), .6, rng.range(.8, 1.6), rng.range(0, TAU),
-      mat(shade(B.wall2, rng.range(.7, 1.1), rng), .95));
+      useTex(mat(shade(B.wall2, rng.range(.7, 1.1), rng), .95), wld.kit.rock));
   }
 }
 
@@ -3712,7 +4007,7 @@ function cryptProp(wld, R, x, z, i, j) {
   if (t < .45) {
     // sarcophagus
     pushBox(R, x, .45, z, 1.1, .9, 2.3, rng.chance(.5) ? 0 : Math.PI / 2,
-      mat(shade(B.wall, rng.range(.9, 1.1), rng), .78));
+      useTex(mat(shade(B.wall, rng.range(.9, 1.1), rng), .78), wld.kit.rock));
     pushBox(R, x, .95, z, 1.2, .16, 2.4, rng.chance(.5) ? 0 : Math.PI / 2,
       mat(shade(B.wall2, 1.05, rng), .7));
     setSolid(wld, i, j, false);
@@ -3736,7 +4031,8 @@ function labProp(wld, R, x, z, i, j) {
   const acc = hexLin(B.accent);
   if (t < .3) {
     // console
-    pushBox(R, x, .5, z, 1.5, 1.0, .8, rng.chance(.5) ? 0 : Math.PI / 2, mat(shade(0x7a828a, 1, rng), .35, null, .6));
+    pushBox(R, x, .5, z, 1.5, 1.0, .8, rng.chance(.5) ? 0 : Math.PI / 2,
+      useTex(mat(shade(0x7a828a, 1, rng), .35, null, .6), wld.kit.metal));
     pushBox(R, x, 1.06, z, 1.2, .1, .6, 0, mat([.05, .08, .1], .2, [acc[0] * 2.4, acc[1] * 2.4, acc[2] * 2.8], 0, 3));
     wld.lights.push({ x, y: 1.4, z, r: acc[0], g: acc[1], b: acc[2], i: 1.1, rad: 7, flicker: .1 });
     setSolid(wld, i, j, false);
@@ -3748,7 +4044,8 @@ function labProp(wld, R, x, z, i, j) {
     wld.lights.push({ x, y: 1.6, z, r: acc[0] * .7, g: acc[1], b: acc[2], i: 1.6, rad: 8, flicker: .18 });
     setSolid(wld, i, j, false);
   } else if (t < .8) {
-    pushBox(R, x, .45, z, 2.0, .9, .9, rng.chance(.5) ? 0 : Math.PI / 2, mat(shade(0x9aa2aa, 1, rng), .3, null, .55));
+    pushBox(R, x, .45, z, 2.0, .9, .9, rng.chance(.5) ? 0 : Math.PI / 2,
+      useTex(mat(shade(0x9aa2aa, 1, rng), .3, null, .55), wld.kit.metal));
     setSolid(wld, i, j, false);
   } else addRubble(wld, R, x, z, rng.int(2, 4), B.wall2);
 }
@@ -3791,7 +4088,8 @@ function cathedralProp(wld, R, x, z, i, j) {
   } else if (t < .8) {
     // statue
     pushMesh(R, 'cyl', x, .4, z, 1.0, .8, 1.0, 0, mat(shade(B.wall, 1.05, rng), .8));
-    pushBox(R, x, 1.5, z, .6, 1.6, .5, rng.range(0, TAU), mat(shade(B.wall, .95, rng), .82));
+    pushBox(R, x, 1.5, z, .6, 1.6, .5, rng.range(0, TAU),
+      useTex(mat(shade(B.wall, .95, rng), .82), wld.kit.rock));
     pushMesh(R, 'sphere', x, 2.5, z, .45, .5, .45, 0, mat(shade(B.wall, 1.0, rng), .8));
     setSolid(wld, i, j, false);
   } else addRubble(wld, R, x, z, rng.int(3, 6), B.wall2);
@@ -3844,7 +4142,7 @@ function genOrganic(wld, R, opts) {
     const hgt = border ? WALL_H + 2 : rng.range(1.6, 3.2);
     pushTilt(R, 'box', x, hgt / 2 - .2, z, rng.range(1.0, 1.5), hgt, rng.range(1.0, 1.5),
       rng.range(-.08, .08), rng.range(0, TAU), rng.range(-.08, .08),
-      mat(shade(opts.rockCol || B.wall, rng.range(.7, 1.1), rng), .95));
+      useTex(mat(shade(opts.rockCol || B.wall, rng.range(.7, 1.1), rng), .95), wld.kit.rock));
   }
 
   // vegetation / scatter
@@ -3917,7 +4215,8 @@ function ruinStruct(wld, R, ci, cj) {
     if (!wld.inB(i, j) || !wld.solid[wld.idx(i, j)]) continue;
     const [x, z] = wld.worldOf(i, j);
     const hh = rng.range(1.4, WALL_H);
-    pushBox(R, x, hh / 2, z, 1.0, hh, 1.0, 0, mat(shade(B.wall, rng.range(.75, 1.1), rng), .92));
+    pushBox(R, x, hh / 2, z, 1.0, hh, 1.0, 0,
+      useTex(mat(shade(B.wall, rng.range(.75, 1.1), rng), .92), wld.kit.wall));
   }
 }
 
@@ -3926,7 +4225,8 @@ function wreckStruct(wld, R, ci, cj) {
   const [x, z] = wld.worldOf(ci, cj);
   const ry = rng.range(0, TAU);
   const len = rng.range(5, 11), wid = rng.range(2.6, 4);
-  pushBox(R, x, 1.1, z, wid, 2.2, len, ry, mat(shade(0x6a5a48, rng.range(.6, .9), rng), .8, null, .6));
+  pushBox(R, x, 1.1, z, wid, 2.2, len, ry,
+    useTex(mat(shade(0x6a5a48, rng.range(.6, .9), rng), .8, null, .6), wld.kit.metal));
   pushBox(R, x, 2.4, z, wid * .82, .6, len * .5, ry, mat(shade(0x54463a, .8, rng), .85, null, .5));
   const c = Math.cos(ry), s = Math.sin(ry);
   for (let dj = -Math.round(len / 2); dj <= Math.round(len / 2); dj++) {
@@ -3949,10 +4249,12 @@ function hutStruct(wld, R, ci, cj) {
   for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
     pushMesh(R, 'cyl', x + dx, .8, z + dz, .3, 1.6, .3, 0, mat(shade(B.propWood, .7, rng), .95));
   }
-  pushBox(R, x, 1.7, z, 5.4, .3, 5.4, 0, mat(shade(B.propWood, .9, rng), .92));
+  pushBox(R, x, 1.7, z, 5.4, .3, 5.4, 0,
+    useTex(mat(shade(B.propWood, .9, rng), .92), wld.kit.wood));
   // walls
   for (const [dx, dz, sx, sz] of [[0, -2.6, 5.4, .3], [0, 2.6, 5.4, .3], [-2.6, 0, .3, 5.4]]) {
-    pushBox(R, x + dx, 2.7, z + dz, sx, 1.8, sz, 0, mat(shade(B.propWood, rng.range(.7, 1), rng), .93));
+    pushBox(R, x + dx, 2.7, z + dz, sx, 1.8, sz, 0,
+      useTex(mat(shade(B.propWood, rng.range(.7, 1), rng), .93), wld.kit.wood));
   }
   pushTilt(R, 'prism', x, 3.9, z, 6, 1.4, 6, 0, 0, 0, mat(shade(B.propWood, .6, rng), .95));
   for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
@@ -5169,12 +5471,14 @@ class Player {
     this.phase += dt * (5.2 + spd * 1.5);
     this.y = game.world.isWater(this.x, this.z) ? -.28 : 0;
 
-    // ---- aiming ----
+    // ---- facing ----
+    // The right thumb stick aims on touch; everywhere else the player faces
+    // wherever they are walking, and that facing is what the weapon fires along.
     const ax = Input.aim.x, az = Input.aim.y;
-    if (Math.hypot(ax, az) > .1) {
+    if (Input.aimActive && Math.hypot(ax, az) > .1) {
       this.yaw = angleLerp(this.yaw, Math.atan2(ax, az), clamp(dt * 22, 0, 1));
-    } else if (spd > .5) {
-      this.yaw = angleLerp(this.yaw, Math.atan2(this.vx, this.vz), clamp(dt * 12, 0, 1));
+    } else if (ml > .01) {
+      this.yaw = angleLerp(this.yaw, Math.atan2(mx, mz), clamp(dt * 20, 0, 1));
     }
 
     // ---- timers ----
@@ -5575,11 +5879,13 @@ class Game {
   updateCamera(dt) {
     const P = this.player;
     const lead = 3.2;
-    const tx = P.x + Math.sin(P.yaw) * lead * (Input.aimActive ? 1 : .35);
-    const tz = P.z + Math.cos(P.yaw) * lead * (Input.aimActive ? 1 : .35);
+    // lead the camera toward where the player is facing / walking
+    const leadK = Input.aimActive ? 1 : (0.35 + clamp(P.moveAmt, 0, 1) * 0.55);
+    const tx = P.x + Math.sin(P.yaw) * lead * leadK;
+    const tz = P.z + Math.cos(P.yaw) * lead * leadK;
     const fit = this.fitCamera(this.boss && !this.boss.dead ? 6 : 0);
     let dist = fit.dist, hgt = fit.hgt;
-    this.R.shadowExtent = clamp(fit.d * 0.78, 26, 52);
+    this.R.shadowExtent = clamp(fit.d * 1.05, 30, 62);
     const k = this.camSnap ? 1 : clamp(dt * 5.5, 0, 1);
     this.camLook[0] = lerp(this.camLook[0], tx, k);
     this.camLook[2] = lerp(this.camLook[2], tz, k);
@@ -5848,6 +6154,7 @@ class Game {
     const col = hexLin(def.color);
     const open = c.opened;
     const m = mat(open ? [col[0] * .45, col[1] * .45, col[2] * .45] : col, .75, null, def.metal || 0);
+    m.tex = def.tex || 0; m.texScale = def.texScale || 1; m.texStr = .16;
     const h = def.h, w = def.w;
     m4.composeY(_E, c.x, h / 2, c.z, c.ry, w, h, w * .8);
     R.push('box', _E, m);
@@ -5914,8 +6221,9 @@ class Game {
       }
       R.particle(true, ox + dx * len, 1.15, oz + dz * len, .4, c[0], c[1], c[2], .8, 0, 0, 0, 0);
     }
-    // subtle aim arc on the ground
-    if (Input.aimActive) {
+    // subtle aim arc on the ground — facing is the firing line, so show it
+    // whenever the player is moving or shooting
+    if (Input.aimActive || Input.firing || P.moveAmt > .15) {
       const dx = Math.sin(P.yaw), dz = Math.cos(P.yaw);
       for (let i = 1; i <= 4; i++) {
         const d = 1.4 + i * .7;
@@ -7223,153 +7531,353 @@ Object.assign(Game.prototype, {
     g.textAlign = 'center';
   },
 
-  /* ---------------------------- map screen ---------------------------- */
+  /* ---------------------------- map screen ----------------------------
+     Two maps in one: the level graph (where can I go, what is locked) and
+     the local floor plan (where have I been). Everything is drawn from the
+     same palette as the HUD so it reads as part of the same machine.      */
+  mapNodePos(l, gx, gy, gw, gh) {
+    return [gx + l.mapPos[0] * gw, gy + l.mapPos[1] * gh];
+  },
+
   drawMapScreen(g, W, H) {
-    g.fillStyle = 'rgba(8,10,8,.94)';
+    const t = this.time;
+    // ---- backdrop ----
+    g.fillStyle = '#07090a';
     g.fillRect(0, 0, W, H);
+    const bg = g.createRadialGradient(W * .5, H * .38, 20, W * .5, H * .38, Math.max(W, H) * .8);
+    bg.addColorStop(0, 'rgba(38,46,40,.55)');
+    bg.addColorStop(1, 'rgba(4,6,5,0)');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(120,140,110,.05)';
+    g.lineWidth = 1;
+    for (let x = 0; x < W; x += 26) { g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, H); g.stroke(); }
+    for (let y = 0; y < H; y += 26) { g.beginPath(); g.moveTo(0, y + .5); g.lineTo(W, y + .5); g.stroke(); }
 
+    // ---- header ----
+    const top = this.safeTop;
     g.textAlign = 'center';
-    g.font = 'bold 20px "Courier New", monospace';
+    g.font = 'bold 21px "Courier New", monospace';
+    g.fillStyle = 'rgba(0,0,0,.85)';
+    g.fillText('THE DEADGRID', W / 2 + 2, top + 36);
     g.fillStyle = HUDCOL.bone;
-    g.fillText('THE DEADGRID', W / 2, 34 + this.safeTop);
-    g.font = '10px "Courier New", monospace';
+    g.fillText('THE DEADGRID', W / 2, top + 34);
+
+    const done = this.visitedLevels.size, total = LEVELS.length;
+    g.font = '9px "Courier New", monospace';
     g.fillStyle = HUDCOL.dim;
-    g.fillText('AREAS DISCOVERED — ' + this.discovered.size + ' / ' + LEVELS.length, W / 2, 52 + this.safeTop);
+    g.fillText(`${done} / ${total} AREAS REACHED  ·  ${this.bossesKilled.size} / 6 BOSSES DOWN`, W / 2, top + 51);
+    // progress rule
+    const pw = Math.min(W - 60, 300), px0 = (W - pw) / 2, py0 = top + 58;
+    g.fillStyle = 'rgba(255,255,255,.09)';
+    g.fillRect(px0, py0, pw, 2);
+    g.fillStyle = HUDCOL.amber;
+    g.fillRect(px0, py0, pw * (done / total), 2);
 
-    // ---- graph ----
-    const gx = 22, gy = 68 + this.safeTop;
-    const gw = W - 44, gh = Math.min(H * .46, 330);
-    const nodePos = (l) => [gx + l.mapPos[0] * gw, gy + l.mapPos[1] * gh];
+    // ---- level graph ----
+    const gx = 26, gy = top + 76;
+    const gh = Math.min(H * .40, 300), gw = W - 52;
+    const pos = (l) => this.mapNodePos(l, gx, gy, gw, gh);
 
-    // links
-    g.lineWidth = 2;
+    // links first, so nodes sit on top
     for (const l of LEVELS) {
       if (!this.discovered.has(l.id)) continue;
-      const [ax, ay] = nodePos(l);
+      const [ax, ay] = pos(l);
       for (const ex of l.exits) {
-        const t = LEVEL_BY_ID[ex.to];
-        if (!this.discovered.has(t.id)) continue;
-        const [bx, by] = nodePos(t);
-        const locked = ex.key && !this.player.keys.has(ex.key) && !this.visitedLevels.has(t.id);
-        g.strokeStyle = locked ? 'rgba(217,72,59,.5)' : 'rgba(143,167,99,.55)';
-        g.setLineDash(locked ? [4, 4] : []);
-        g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+        const tgt = LEVEL_BY_ID[ex.to];
+        if (!this.discovered.has(tgt.id)) continue;
+        if (tgt.idx < l.idx) continue;                 // draw each pair once
+        const [bx, by] = pos(tgt);
+        const held = !ex.key || this.player.keys.has(ex.key);
+        const walked = this.visitedLevels.has(l.id) && this.visitedLevels.has(tgt.id);
+        // gentle arc so parallel links don't overlap
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const nx = -(by - ay), ny = (bx - ax);
+        const nl = Math.hypot(nx, ny) || 1;
+        const cx = mx + nx / nl * 14, cy = my + ny / nl * 14;
+        g.lineWidth = walked ? 2.5 : 2;
+        g.setLineDash(held ? [] : [5, 5]);
+        g.strokeStyle = !held ? 'rgba(217,72,59,.65)'
+          : walked ? 'rgba(143,167,99,.8)' : 'rgba(143,167,99,.35)';
+        g.beginPath();
+        g.moveTo(ax, ay); g.quadraticCurveTo(cx, cy, bx, by);
+        g.stroke();
+        g.setLineDash([]);
+        if (ex.key) {
+          // key marker at the arc midpoint
+          const qx = .25 * ax + .5 * cx + .25 * bx, qy = .25 * ay + .5 * cy + .25 * by;
+          g.fillStyle = '#0a0c0a';
+          g.beginPath(); g.arc(qx, qy, 7, 0, TAU); g.fill();
+          g.strokeStyle = held ? HUDCOL.green : hexCss(KEYS[ex.key].color);
+          g.lineWidth = 1.4;
+          g.beginPath(); g.arc(qx, qy, 7, 0, TAU); g.stroke();
+          g.fillStyle = held ? HUDCOL.green : hexCss(KEYS[ex.key].color);
+          g.font = 'bold 9px "Courier New", monospace';
+          g.fillText(held ? '✓' : '◆', qx, qy + 3.5);
+        }
       }
     }
-    g.setLineDash([]);
 
     // nodes
     for (const l of LEVELS) {
       const known = this.discovered.has(l.id);
-      const [x, y] = nodePos(l);
+      const [x, y] = pos(l);
       const cur = l.id === this.levelId;
       const visited = this.visitedLevels.has(l.id);
       const bossDown = l.boss && this.runState[l.id] && this.runState[l.id].bossDead;
-      const r = cur ? 13 : 10;
-
-      g.beginPath(); g.arc(x, y, r + 3, 0, TAU);
-      g.fillStyle = 'rgba(8,10,8,.9)'; g.fill();
+      const r = cur ? 13 : 10.5;
+      const biome = BIOMES[l.biome];
+      const tint = biome && biome.accent != null ? hexCss(biome.accent) : HUDCOL.amber;
 
       if (!known) {
-        g.strokeStyle = 'rgba(90,90,80,.5)'; g.lineWidth = 1.5;
         g.setLineDash([3, 3]);
-        g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+        g.strokeStyle = 'rgba(110,110,98,.45)'; g.lineWidth = 1.4;
+        g.beginPath(); g.arc(x, y, 9.5, 0, TAU); g.stroke();
         g.setLineDash([]);
-        g.fillStyle = 'rgba(90,90,80,.7)';
-        g.font = 'bold 12px "Courier New", monospace';
+        g.fillStyle = 'rgba(110,110,98,.6)';
+        g.font = 'bold 11px "Courier New", monospace';
         g.fillText('?', x, y + 4);
         continue;
       }
-      const bc = BIOMES[l.biome];
-      const base = bc && bc.accent ? hexCss(bc.accent) : HUDCOL.amber;
-      g.beginPath(); g.arc(x, y, r, 0, TAU);
-      g.fillStyle = visited ? 'rgba(40,48,36,.95)' : 'rgba(24,28,22,.95)';
-      g.fill();
-      g.lineWidth = cur ? 3 : 2;
-      g.strokeStyle = cur ? HUDCOL.bone : (visited ? base : 'rgba(143,138,116,.7)');
-      g.stroke();
 
+      if (cur) {                                        // pulsing halo on "you are here"
+        const pr = r + 6 + Math.sin(t * 3) * 3;
+        g.strokeStyle = `rgba(228,220,196,${.35 + Math.sin(t * 3) * .18})`;
+        g.lineWidth = 1.5;
+        g.beginPath(); g.arc(x, y, pr, 0, TAU); g.stroke();
+      }
+      // disc
+      const grad = g.createRadialGradient(x - r * .3, y - r * .4, 1, x, y, r);
+      grad.addColorStop(0, visited ? 'rgba(62,72,54,.98)' : 'rgba(26,30,24,.98)');
+      grad.addColorStop(1, 'rgba(10,13,10,.98)');
+      g.fillStyle = grad;
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+      // ring
+      g.lineWidth = cur ? 2.6 : 1.8;
+      g.strokeStyle = cur ? HUDCOL.bone : (visited ? tint : 'rgba(143,138,116,.55)');
+      if (l.optional) g.setLineDash([4, 3]);
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+      g.setLineDash([]);
+      // badge
+      g.font = 'bold 11px "Courier New", monospace';
       if (l.boss) {
         g.fillStyle = bossDown ? HUDCOL.green : HUDCOL.blood;
-        g.font = 'bold 11px "Courier New", monospace';
         g.fillText(bossDown ? '✓' : '☠', x, y + 4);
-      } else if (cur) {
-        g.fillStyle = HUDCOL.bone;
-        g.beginPath(); g.arc(x, y, 3.5, 0, TAU); g.fill();
+      } else if (visited) {
+        g.fillStyle = 'rgba(228,220,196,.75)';
+        g.beginPath(); g.arc(x, y, 2.6, 0, TAU); g.fill();
       }
-      g.font = (cur ? 'bold ' : '') + '9px "Courier New", monospace';
-      g.fillStyle = cur ? HUDCOL.bone : HUDCOL.dim;
+      // label
+      g.font = (cur ? 'bold ' : '') + '8.5px "Courier New", monospace';
+      const lw2 = g.measureText(l.short).width + 8;
+      g.fillStyle = 'rgba(7,9,10,.88)';
+      g.fillRect(x - lw2 / 2, y + r + 4, lw2, 11);
+      g.fillStyle = cur ? HUDCOL.bone : (visited ? HUDCOL.dim : 'rgba(143,138,116,.65)');
       g.fillText(l.short, x, y + r + 12);
-      if (l.optional) {
-        g.fillStyle = 'rgba(159,232,255,.7)';
-        g.font = '8px "Courier New", monospace';
-        g.fillText('OPTIONAL', x, y + r + 22);
-      }
     }
 
-    // ---- current level map ----
-    const my = gy + gh + 22;
-    const ms = Math.min(W - 60, H - my - 120);
+    // legend
+    const ly = gy + gh + 20;
+    g.font = '8px "Courier New", monospace';
+    g.textAlign = 'left';
+    const legend = [['☠', HUDCOL.blood, 'BOSS'], ['◆', HUDCOL.amber, 'NEEDS KEY'], ['?', 'rgba(110,110,98,.8)', 'UNKNOWN']];
+    let lx = gx;
+    for (const [icon, col, label] of legend) {
+      g.fillStyle = col; g.fillText(icon, lx, ly);
+      g.fillStyle = HUDCOL.dim; g.fillText(label, lx + 10, ly);
+      lx += 16 + g.measureText(label).width;
+    }
+    g.textAlign = 'center';
+
+    // ---- local floor plan ----
+    const my = ly + 16;
+    const ms = Math.min(W - 56, H - my - 118);
     if (ms > 60 && this.mapCanvas) {
       const mx = (W - ms) / 2;
-      g.fillStyle = 'rgba(6,8,6,.9)';
+      g.font = 'bold 10px "Courier New", monospace';
+      g.fillStyle = HUDCOL.amber;
+      g.fillText(this.level.name, W / 2, my - 7);
+
+      g.fillStyle = 'rgba(4,6,5,.92)';
       g.fillRect(mx, my, ms, ms);
       g.imageSmoothingEnabled = false;
+      g.globalAlpha = .95;
       g.drawImage(this.mapCanvas, 0, 0, this.world.w, this.world.h, mx, my, ms, ms);
+      g.globalAlpha = 1;
+
       const sc = ms / this.world.w;
-      // exits + player
-      for (const ex of this.world.exits) {
-        const ux = mx + (ex.x + this.world.w / 2) * sc, uy = my + (ex.z + this.world.h / 2) * sc;
-        const locked = ex.key && !this.player.keys.has(ex.key);
-        g.fillStyle = locked ? HUDCOL.blood : '#7fe89a';
-        g.fillRect(ux - 3, uy - 3, 6, 6);
-        g.font = '8px "Courier New", monospace';
-        g.fillText(ex.label, ux, uy - 6);
-      }
+      const px = (wx) => mx + (wx + this.world.w / 2) * sc;
+      const pz = (wz) => my + (wz + this.world.h / 2) * sc;
+
       // key containers, but only where the player has actually been
       for (const c of this.world.containers) {
         if (c.opened || !c.key) continue;
         const [ci, cj] = this.world.cellOf(c.x, c.z);
         if (!this.world.inB(ci, cj) || !this.world.visited[this.world.idx(ci, cj)]) continue;
-        const kx = mx + (c.x + this.world.w / 2) * sc, ky2 = my + (c.z + this.world.h / 2) * sc;
+        const kx = px(c.x), ky2 = pz(c.z);
+        const pulse = .6 + .4 * Math.sin(t * 4 + c.id);
         g.fillStyle = hexCss(KEYS[c.key].color);
+        g.globalAlpha = pulse;
         g.beginPath();
-        g.moveTo(kx, ky2 - 4); g.lineTo(kx + 4, ky2); g.lineTo(kx, ky2 + 4); g.lineTo(kx - 4, ky2);
+        g.moveTo(kx, ky2 - 5); g.lineTo(kx + 5, ky2); g.lineTo(kx, ky2 + 5); g.lineTo(kx - 5, ky2);
         g.closePath(); g.fill();
+        g.globalAlpha = 1;
       }
-      const ux = mx + (this.player.x + this.world.w / 2) * sc, uy = my + (this.player.z + this.world.h / 2) * sc;
+
+      // exits
+      g.font = '7.5px "Courier New", monospace';
+      for (const ex of this.world.exits) {
+        const ux = px(ex.x), uy = pz(ex.z);
+        const locked = ex.key && !this.player.keys.has(ex.key);
+        const col = locked ? HUDCOL.blood : '#7fe89a';
+        g.fillStyle = col;
+        g.fillRect(ux - 3.5, uy - 3.5, 7, 7);
+        const lw = g.measureText(ex.label).width + 6;
+        const lxc = clamp(ux, mx + lw / 2 + 2, mx + ms - lw / 2 - 2);
+        const lyc = uy - 16 < my + 2 ? uy + 8 : uy - 16;
+        g.fillStyle = 'rgba(4,6,5,.85)';
+        g.fillRect(lxc - lw / 2, lyc, lw, 10);
+        g.fillStyle = col;
+        g.fillText(ex.label, lxc, lyc + 7.5);
+      }
+
+      // player
+      const ux = px(this.player.x), uy = pz(this.player.z);
+      g.strokeStyle = `rgba(228,220,196,${.3 + Math.sin(t * 3) * .2})`;
+      g.lineWidth = 1;
+      g.beginPath(); g.arc(ux, uy, 7 + Math.sin(t * 3) * 2, 0, TAU); g.stroke();
       g.fillStyle = HUDCOL.bone;
-      g.beginPath(); g.arc(ux, uy, 3.5, 0, TAU); g.fill();
-      g.strokeStyle = 'rgba(143,138,116,.6)'; g.lineWidth = 1;
-      g.strokeRect(mx, my, ms, ms);
-      g.font = 'bold 10px "Courier New", monospace';
-      g.fillStyle = HUDCOL.amber;
-      g.fillText(this.level.name, W / 2, my - 6);
+      g.beginPath();
+      g.moveTo(ux + Math.sin(this.player.yaw) * 6, uy + Math.cos(this.player.yaw) * 6);
+      g.lineTo(ux + Math.sin(this.player.yaw + 2.5) * 4.5, uy + Math.cos(this.player.yaw + 2.5) * 4.5);
+      g.lineTo(ux + Math.sin(this.player.yaw - 2.5) * 4.5, uy + Math.cos(this.player.yaw - 2.5) * 4.5);
+      g.closePath(); g.fill();
+
+      // frame with corner brackets
+      g.strokeStyle = 'rgba(143,138,116,.5)'; g.lineWidth = 1;
+      g.strokeRect(mx + .5, my + .5, ms - 1, ms - 1);
+      g.strokeStyle = HUDCOL.amber; g.lineWidth = 2;
+      const cb = 12;
+      for (const [sx, sy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const ax2 = mx + sx * ms, ay2 = my + sy * ms;
+        const dx = sx ? -cb : cb, dy = sy ? -cb : cb;
+        g.beginPath();
+        g.moveTo(ax2 + dx, ay2); g.lineTo(ax2, ay2); g.lineTo(ax2, ay2 + dy);
+        g.stroke();
+      }
     }
 
     // ---- keys held ----
-    const keys = [...this.player.keys];
-    g.font = '10px "Courier New", monospace';
     g.textAlign = 'left';
-    let ky = H - 74;
+    const keys = [...this.player.keys];
+    let ky = H - 86;
+    g.font = '9px "Courier New", monospace';
     g.fillStyle = HUDCOL.dim;
-    g.fillText('KEYS HELD', 22, ky);
+    g.fillText('KEYS HELD', 26, ky);
     ky += 14;
-    if (!keys.length) { g.fillStyle = 'rgba(120,116,100,.7)'; g.fillText('— none —', 22, ky); }
-    else {
-      let kx = 22;
+    if (!keys.length) {
+      g.fillStyle = 'rgba(120,116,100,.6)';
+      g.fillText('— none —', 26, ky);
+    } else {
+      let kx = 26;
       for (const k of keys) {
         const kd = KEYS[k];
-        g.fillStyle = hexCss(kd.color);
-        g.fillText('◆ ' + kd.name, kx, ky);
-        ky += 13;
+        g.font = '8.5px "Courier New", monospace';
+        const cw = g.measureText(kd.name).width + 18;
+        if (kx + cw > W - 26) { kx = 26; ky += 16; }
         if (ky > H - 26) break;
+        g.fillStyle = 'rgba(255,255,255,.05)';
+        g.fillRect(kx, ky - 9, cw, 13);
+        g.fillStyle = hexCss(kd.color);
+        g.fillText('◆', kx + 5, ky + 1);
+        g.fillStyle = HUDCOL.bone;
+        g.fillText(kd.name, kx + 14, ky + 1);
+        kx += cw + 5;
       }
     }
+
     g.textAlign = 'center';
-    g.fillStyle = HUDCOL.dim;
-    g.font = '10px "Courier New", monospace';
-    g.fillText('TAP ANYWHERE OR PRESS M TO CLOSE', W / 2, H - 16);
+    g.fillStyle = 'rgba(143,138,116,.75)';
+    g.font = '9px "Courier New", monospace';
+    g.fillText('TAP ANYWHERE  ·  M TO CLOSE', W / 2, H - 16);
+  },
+
+
+  /* --------------------------- ammo / mana bar ------------------------
+     A bar reads "how long until I have to stop shooting" far faster than a
+     number does. Rounds are drawn as segments; a ghost trail lags behind the
+     drain, the leading edge flashes per shot, and a reload sweeps the bar.  */
+  updateAmmoBar(P, w, isMagic, D) {
+    const wrap = D.ammoWrap;
+    if (!wrap) return;
+    if (w.kind === 'melee') { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    let cur, max, segs, reserveTxt, lowAt, critAt;
+    if (isMagic) {
+      cur = P.mana; max = Math.max(1, P.stats.maxMana);
+      segs = Math.max(1, Math.round(max / w.mana));
+      reserveTxt = '\u2212' + w.mana;
+      lowAt = w.mana * 2.5 / max; critAt = w.mana / max;
+      const c = hexCss(w.color);
+      const rgb = [(w.color >> 16) & 255, (w.color >> 8) & 255, w.color & 255];
+      const mixc = (t) => `rgb(${rgb.map(v => Math.round(lerp(v, t > 0 ? 255 : 0, Math.abs(t)))).join(',')})`;
+      wrap.style.setProperty('--ac1', mixc(.55));
+      wrap.style.setProperty('--ac2', c);
+      wrap.style.setProperty('--ac3', mixc(-.55));
+      wrap.style.setProperty('--acg', rgb.join(','));
+    } else {
+      cur = P.mags[w.id] || 0; max = w.mag;
+      segs = max;
+      reserveTxt = String(P.ammo[w.ammo]);
+      lowAt = .35; critAt = .16;
+      wrap.style.removeProperty('--ac1'); wrap.style.removeProperty('--ac2');
+      wrap.style.removeProperty('--ac3'); wrap.style.removeProperty('--acg');
+    }
+
+    const frac = clamp(cur / max, 0, 1);
+    const reloading = P.reloadT > 0;
+    let pct;
+    if (reloading) {
+      pct = (1 - P.reloadT / Math.max(.001, P.reloadTotal)) * 100;
+      wrap.classList.add('reloading');
+    } else {
+      pct = frac * 100;
+      wrap.classList.remove('reloading');
+    }
+    wrap.classList.toggle('low', !reloading && frac <= lowAt && frac > critAt);
+    wrap.classList.toggle('crit', !reloading && frac <= critAt);
+
+    D.ammoFill.style.width = pct.toFixed(2) + '%';
+
+    // ghost: snaps up on gain, drains slowly on spend
+    const prev = this._ammoPct == null ? pct : this._ammoPct;
+    if (pct > prev + 0.01) {
+      D.ammoGhost.style.transition = 'none';
+      D.ammoGhost.style.width = pct.toFixed(2) + '%';
+      void D.ammoGhost.offsetWidth;
+      D.ammoGhost.style.transition = '';
+    } else {
+      D.ammoGhost.style.width = pct.toFixed(2) + '%';
+    }
+
+    // leading-edge muzzle flash on spend
+    if (pct < prev - 0.01 && !reloading) {
+      D.ammoEdge.style.left = pct.toFixed(2) + '%';
+      D.ammoEdge.classList.remove('flash');
+      void D.ammoEdge.offsetWidth;
+      D.ammoEdge.classList.add('flash');
+    }
+    this._ammoPct = pct;
+
+    if (this._ammoSegs !== segs) {
+      this._ammoSegs = segs;
+      D.ammoTicks.style.display = segs <= 40 ? '' : 'none';
+      D.ammoTicks.style.setProperty('--seg', (100 / segs).toFixed(3) + '%');
+    }
+    const magTxt = isMagic ? String(Math.floor(cur)) : String(cur);
+    if (D.ammoMag.textContent !== magTxt) D.ammoMag.textContent = magTxt;
+    if (D.ammoRes.textContent !== reserveTxt) D.ammoRes.textContent = reserveTxt;
   },
 
   /* ------------------------------- HUD -------------------------------- */
@@ -7402,21 +7910,7 @@ Object.assign(Game.prototype, {
     D.wpnName.style.color = isMagic ? hexCss(w.color) : (w.kind === 'melee' ? HUDCOL.bone : HUDCOL.amber);
     D.wpnClass.textContent = w.cls || (w.kind === 'melee' ? 'MELEE' : '');
 
-    if (w.kind === 'gun') {
-      D.ammo.style.display = '';
-      const mag = P.mags[w.id] || 0;
-      D.ammo.innerHTML = `<b>${mag}</b> / ${P.ammo[w.ammo]}`;
-      D.ammo.style.color = mag === 0 ? HUDCOL.blood : (mag <= w.mag * .25 ? HUDCOL.amber : HUDCOL.bone);
-    } else if (isMagic) {
-      D.ammo.style.display = '';
-      D.ammo.innerHTML = `<b>${Math.floor(P.mana)}</b> MANA · ${w.mana}/CAST`;
-      D.ammo.style.color = P.mana < w.mana ? HUDCOL.blood : hexCss(w.color);
-    } else {
-      D.ammo.style.display = 'none';
-    }
-
-    D.reload.style.display = P.reloadT > 0 ? '' : 'none';
-    if (P.reloadT > 0) D.reloadBar.style.width = ((1 - P.reloadT / P.reloadTotal) * 100) + '%';
+    this.updateAmmoBar(P, w, isMagic, D);
 
     D.med.textContent = P.medkits;
     D.medBtn.classList.toggle('empty', P.medkits <= 0);
@@ -7506,8 +8000,10 @@ Object.assign(Game.prototype, {
     arRow: document.getElementById('arRow'), arFill: document.getElementById('arFill'),
     mnRow: document.getElementById('mnRow'), mnFill: document.getElementById('mnFill'),
     wpnName: document.getElementById('wpnName'), wpnClass: document.getElementById('wpnClass'),
-    ammo: document.getElementById('ammo'), reload: document.getElementById('reload'),
-    reloadBar: document.getElementById('reloadBar'),
+    ammoWrap: document.getElementById('ammoWrap'), ammoBar: document.getElementById('ammoBar'),
+    ammoFill: document.getElementById('ammoFill'), ammoGhost: document.getElementById('ammoGhost'),
+    ammoTicks: document.getElementById('ammoTicks'), ammoEdge: document.getElementById('ammoEdge'),
+    ammoMag: document.getElementById('ammoMag'), ammoRes: document.getElementById('ammoRes'),
     med: document.getElementById('medCount'), kills: document.getElementById('kills'),
     lvl: document.getElementById('lvl'), xpFill: document.getElementById('xpFill'),
     levelName: document.getElementById('levelName'),
@@ -7581,11 +8077,13 @@ Object.assign(Game.prototype, {
     const cl = Math.min(len, STICK_R);
     const nx = len > 0 ? dx / len : 0, ny = len > 0 ? dy / len : 0;
     if (e.pointerId === moveId) {
+      // the camera sits on +Z looking toward -Z, so screen-up is world -Z and
+      // screen-down (positive ny) is world +Z — pass ny through unnegated
       const mag = clamp(len / STICK_R, 0, 1);
-      Input.move.x = nx * mag; Input.move.y = -ny * mag;   // screen up = world -z
+      Input.move.x = nx * mag; Input.move.y = ny * mag;
       setStick(D.stickL, D.knobL, p.x0, p.y0, nx * cl, ny * cl, true);
     } else if (e.pointerId === aimId) {
-      if (len > 8) { Input.aim.x = nx; Input.aim.y = -ny; }
+      if (len > 8) { Input.aim.x = nx; Input.aim.y = ny; }
       setStick(D.stickR, D.knobR, p.x0, p.y0, nx * cl, ny * cl, true);
     }
   }
@@ -7609,15 +8107,15 @@ Object.assign(Game.prototype, {
   window.addEventListener('pointercancel', onUp);
 
   /* --------------------------- mouse aim ---------------------------- */
-  let mouseX = 0, mouseY = 0, hasMouse = false;
+  let hasMouse = false;
   window.addEventListener('mousemove', (e) => {
     if (e.pointerType === 'touch') return;
-    mouseX = e.clientX; mouseY = e.clientY; hasMouse = true;
+    hasMouse = true;
   });
   window.addEventListener('mousedown', (e) => {
     if (!game || game.state !== 'playing') return;
     if (e.target.closest('.btn') || e.target.closest('#wbar')) return;
-    if (e.button === 0 && hasMouse && pointers.size === 0) { Input.firing = true; Input.aimActive = true; }
+    if (e.button === 0 && hasMouse && pointers.size === 0) Input.firing = true;
   });
   window.addEventListener('mouseup', (e) => {
     if (e.button === 0 && pointers.size === 0) { Input.firing = false; }
@@ -7626,31 +8124,6 @@ Object.assign(Game.prototype, {
     if (!game || game.state !== 'playing') return;
     game.player.cycleWeapon(e.deltaY > 0 ? 1 : -1);
   }, { passive: true });
-
-  /** project the mouse onto the ground plane to get an aim direction */
-  function updateMouseAim() {
-    if (!hasMouse || !game || !game.world || pointers.size > 0) return;
-    const R = game.R;
-    const ndcX = (mouseX / window.innerWidth) * 2 - 1;
-    const ndcY = 1 - (mouseY / window.innerHeight) * 2;
-    const m = R.invVP;
-    const px = m[0] * ndcX + m[4] * ndcY + m[8] * 1 + m[12];
-    const py = m[1] * ndcX + m[5] * ndcY + m[9] * 1 + m[13];
-    const pz = m[2] * ndcX + m[6] * ndcY + m[10] * 1 + m[14];
-    const pw = m[3] * ndcX + m[7] * ndcY + m[11] * 1 + m[15];
-    if (Math.abs(pw) < 1e-6) return;
-    const wx = px / pw, wy = py / pw, wz = pz / pw;
-    const o = R.camPos;
-    const dy = wy - o[1];
-    if (Math.abs(dy) < 1e-5) return;
-    const targetY = game.player.y + 1.0;
-    const t = (targetY - o[1]) / dy;
-    if (t <= 0) return;
-    const hx = o[0] + (wx - o[0]) * t, hz = o[2] + (wz - o[2]) * t;
-    const ax = hx - game.player.x, az = hz - game.player.z;
-    const l = Math.hypot(ax, az);
-    if (l > 0.4) { Input.aim.x = ax / l; Input.aim.y = az / l; Input.aimActive = true; }
-  }
 
   /* --------------------------- keyboard ----------------------------- */
   const KEYMAP = {
@@ -7682,8 +8155,8 @@ Object.assign(Game.prototype, {
     let x = 0, y = 0;
     if (Input.down('left')) x -= 1;
     if (Input.down('right')) x += 1;
-    if (Input.down('up')) y += 1;
-    if (Input.down('down')) y -= 1;
+    if (Input.down('up')) y -= 1;      // screen up = world -Z
+    if (Input.down('down')) y += 1;
     if (x || y) {
       const l = Math.hypot(x, y);
       Input.move.x = x / l; Input.move.y = y / l;
@@ -7775,7 +8248,6 @@ Object.assign(Game.prototype, {
 
     if (game.state === 'playing') {
       keyboardMove();
-      updateMouseAim();
       if (Input.tap('heal')) game.useMedkit();
       if (Input.tap('dash')) game.dash();
       if (Input.tap('reload')) game.player.startReload();

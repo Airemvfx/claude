@@ -7,13 +7,20 @@ const MESH_IDS = ['box', 'cyl', 'cone', 'sphere', 'plane', 'prism', 'octa', 'qua
 const CHUNK_SIZE = 26;
 
 /** default material — game code passes partial overrides */
-function mat(c, rough, e, metal, mt, anim, ao, alpha) {
+function mat(c, rough, e, metal, mt, anim, ao, alpha, tex, texScale, texStr) {
   return {
     c: c || [1, 1, 1], rough: rough == null ? 0.8 : rough,
     e: e || null, metal: metal || 0, mt: mt || 0,
     anim: anim || 0, ao: ao == null ? 1 : ao, alpha: alpha == null ? 1 : alpha,
+    tex: tex || 0, texScale: texScale || 1, texStr: texStr == null ? 1 : texStr, texOff: 0,
   };
 }
+
+/** surface pattern ids, matched to dTexH/dTexTint in the shader */
+const TEX = {
+  NONE: 0, BRICK: 1, PLANK: 2, CONCRETE: 3, METAL: 4,
+  TILE: 5, GRIT: 6, FOLIAGE: 7, STONE: 8,
+};
 
 class Renderer {
   constructor(canvas) {
@@ -30,7 +37,7 @@ class Renderer {
     this.hasFloatRT = !!this.extFloat;
 
     this.quality = {
-      shadowSize: 1536, ssao: true, bloom: true, renderScale: 1,
+      shadowSize: 1536, ssao: true, bloom: true, detail: true, renderScale: 1,
       maxParticles: 3000, soft: true,
     };
 
@@ -306,6 +313,8 @@ class Renderer {
     else { dst[o + 20] = 0; dst[o + 21] = 0; dst[o + 22] = 0; }
     dst[o + 23] = mt.metal;
     dst[o + 24] = mt.mt; dst[o + 25] = mt.anim; dst[o + 26] = mt.ao; dst[o + 27] = mt.alpha;
+    dst[o + 28] = mt.tex || 0; dst[o + 29] = mt.texScale || 1;
+    dst[o + 30] = mt.texStr == null ? 1 : mt.texStr; dst[o + 31] = mt.texOff || 0;
   }
 
   /* -------------------------- dynamic pushes ------------------------- */
@@ -635,6 +644,7 @@ class Renderer {
       .f('uShadowTexel', 1 / this.shadowSize)
       .f('uTime', this.time)
       .f('uAOEnabled', this.quality.ssao ? 1 : 0)
+      .f('uDetail', this.quality.detail ? 1 : 0)
       .v2('uScreenSize', this.W, this.H)
       .v3a('uFogColor', env.fogColor)
       .v2('uFog', env.fogDensity, env.fogHeight)

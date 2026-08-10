@@ -198,12 +198,14 @@ class Player {
     this.phase += dt * (5.2 + spd * 1.5);
     this.y = game.world.isWater(this.x, this.z) ? -.28 : 0;
 
-    // ---- aiming ----
+    // ---- facing ----
+    // The right thumb stick aims on touch; everywhere else the player faces
+    // wherever they are walking, and that facing is what the weapon fires along.
     const ax = Input.aim.x, az = Input.aim.y;
-    if (Math.hypot(ax, az) > .1) {
+    if (Input.aimActive && Math.hypot(ax, az) > .1) {
       this.yaw = angleLerp(this.yaw, Math.atan2(ax, az), clamp(dt * 22, 0, 1));
-    } else if (spd > .5) {
-      this.yaw = angleLerp(this.yaw, Math.atan2(this.vx, this.vz), clamp(dt * 12, 0, 1));
+    } else if (ml > .01) {
+      this.yaw = angleLerp(this.yaw, Math.atan2(mx, mz), clamp(dt * 20, 0, 1));
     }
 
     // ---- timers ----

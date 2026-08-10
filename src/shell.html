@@ -33,7 +33,7 @@
     text-transform:uppercase;text-shadow:1px 1px 0 rgba(0,0,0,.9);}
   body:not(.playing) .hud{display:none;}
   body.mapopen #hudTopLeft,body.mapopen #hudBottom,body.mapopen .btn,
-  body.mapopen #stickL,body.mapopen #stickR{opacity:0;pointer-events:none;}
+  body.mapopen #stickL,body.mapopen #stickR,body.mapopen #muteBtn{opacity:0;pointer-events:none;}
   #hudTopLeft{top:calc(8px + env(safe-area-inset-top));left:10px;width:min(46vw,210px);
     transition:opacity .18s;}
   .bar{height:7px;background:rgba(0,0,0,.6);border:1px solid var(--edge);position:relative;
@@ -62,10 +62,43 @@
     text-transform:uppercase;text-shadow:1px 1px 0 rgba(0,0,0,.9);transition:opacity .18s;}
   #wpnName{font-size:12px;font-weight:bold;letter-spacing:.1em;color:var(--amber);}
   #wpnClass{font-size:8px;color:var(--dim);letter-spacing:.22em;}
-  #ammo{font-size:11px;color:var(--bone);margin-top:2px;letter-spacing:.12em;}
-  #ammo b{font-size:17px;}
-  #reload{width:96px;height:4px;background:rgba(0,0,0,.7);border:1px solid var(--edge);margin-top:4px;}
-  #reloadBar{height:100%;background:var(--amber);width:0;}
+  /* ---- animated ammo / mana bar ---- */
+  #ammoWrap{margin-top:5px;display:flex;align-items:center;gap:7px;
+    --ac1:#ffe9a8; --ac2:#d9a441; --ac3:#8c5a16; --acg:217,164,65;}
+  #ammoBar{position:relative;width:128px;height:14px;background:rgba(0,0,0,.75);
+    border:1.5px solid var(--edge);overflow:hidden;transform:skewX(-12deg);
+    box-shadow:inset 0 0 6px rgba(0,0,0,.9);}
+  #ammoBar>div{position:absolute;top:0;bottom:0;left:0;}
+  #ammoGhost{background:rgba(255,255,255,.3);width:0;
+    transition:width .5s cubic-bezier(.22,.7,.3,1) .12s;}
+  #ammoFill{width:0;background:linear-gradient(180deg,var(--ac1),var(--ac2) 42%,var(--ac3));
+    box-shadow:0 0 9px rgba(var(--acg),.6);transition:width .09s linear;}
+  #ammoTicks{left:0;right:0;width:auto;pointer-events:none;
+    background-image:repeating-linear-gradient(90deg,
+      rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(var(--seg) - 1.6px),
+      rgba(0,0,0,.8) calc(var(--seg) - 1.6px), rgba(0,0,0,.8) var(--seg));}
+  #ammoEdge{width:3px;background:#fff;opacity:0;
+    box-shadow:0 0 10px 3px rgba(255,255,255,.85);}
+  #ammoSweep{left:0;width:38%;opacity:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);}
+  #ammoNums{font-size:10px;color:var(--dim);letter-spacing:.1em;line-height:1;}
+  #ammoNums b{font-size:16px;color:var(--bone);}
+  @keyframes ammoEdgeFlash{from{opacity:1;}to{opacity:0;}}
+  #ammoEdge.flash{animation:ammoEdgeFlash .18s ease-out;}
+  @keyframes ammoSweepMove{from{transform:translateX(-110%);}to{transform:translateX(370%);}}
+  #ammoWrap.reloading #ammoSweep{opacity:1;animation:ammoSweepMove .85s linear infinite;}
+  #ammoWrap.reloading #ammoFill{transition:width .1s linear;}
+  #ammoWrap.reloading #ammoGhost{opacity:0;}
+  @keyframes ammoLowPulse{0%,100%{box-shadow:inset 0 0 6px rgba(0,0,0,.9);border-color:var(--edge);}
+    50%{box-shadow:inset 0 0 6px rgba(0,0,0,.9),0 0 9px rgba(217,72,59,.75);border-color:#d9483b;}}
+  #ammoWrap.low{--ac1:#ffcf8a;--ac2:#e0862c;--ac3:#8a4410;--acg:224,134,44;}
+  #ammoWrap.low #ammoBar{animation:ammoLowPulse 1s ease-in-out infinite;}
+  #ammoWrap.crit{--ac1:#ffb0a0;--ac2:#d9483b;--ac3:#6e1a12;--acg:217,72,59;}
+  #ammoWrap.crit #ammoBar{animation:ammoLowPulse .48s ease-in-out infinite;}
+  #ammoWrap.crit #ammoNums b{color:#d9483b;}
+  @media (prefers-reduced-motion:reduce){
+    #ammoWrap.low #ammoBar,#ammoWrap.crit #ammoBar,#ammoWrap.reloading #ammoSweep{animation:none;}
+  }
   #wbar{display:flex;gap:4px;margin-top:7px;pointer-events:auto;}
   .wslot{width:22px;height:22px;border:1.5px solid #4a4a3c;background:rgba(10,12,9,.7);
     color:#6a6a58;font-size:10px;display:flex;align-items:center;justify-content:center;
@@ -162,8 +195,16 @@
 <div id="hudBottom" class="hud">
   <div id="wpnName">M9 SIDEARM</div>
   <div id="wpnClass">PISTOL</div>
-  <div id="ammo"><b>15</b> / 60</div>
-  <div id="reload" style="display:none"><div id="reloadBar"></div></div>
+  <div id="ammoWrap">
+    <div id="ammoBar">
+      <div id="ammoGhost"></div>
+      <div id="ammoFill"></div>
+      <div id="ammoSweep"></div>
+      <div id="ammoEdge"></div>
+      <div id="ammoTicks"></div>
+    </div>
+    <div id="ammoNums"><b id="ammoMag">15</b> <span id="ammoRes">60</span></div>
+  </div>
   <div id="wbar"></div>
 </div>
 

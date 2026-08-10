@@ -26,8 +26,10 @@
     arRow: document.getElementById('arRow'), arFill: document.getElementById('arFill'),
     mnRow: document.getElementById('mnRow'), mnFill: document.getElementById('mnFill'),
     wpnName: document.getElementById('wpnName'), wpnClass: document.getElementById('wpnClass'),
-    ammo: document.getElementById('ammo'), reload: document.getElementById('reload'),
-    reloadBar: document.getElementById('reloadBar'),
+    ammoWrap: document.getElementById('ammoWrap'), ammoBar: document.getElementById('ammoBar'),
+    ammoFill: document.getElementById('ammoFill'), ammoGhost: document.getElementById('ammoGhost'),
+    ammoTicks: document.getElementById('ammoTicks'), ammoEdge: document.getElementById('ammoEdge'),
+    ammoMag: document.getElementById('ammoMag'), ammoRes: document.getElementById('ammoRes'),
     med: document.getElementById('medCount'), kills: document.getElementById('kills'),
     lvl: document.getElementById('lvl'), xpFill: document.getElementById('xpFill'),
     levelName: document.getElementById('levelName'),
@@ -101,11 +103,13 @@
     const cl = Math.min(len, STICK_R);
     const nx = len > 0 ? dx / len : 0, ny = len > 0 ? dy / len : 0;
     if (e.pointerId === moveId) {
+      // the camera sits on +Z looking toward -Z, so screen-up is world -Z and
+      // screen-down (positive ny) is world +Z — pass ny through unnegated
       const mag = clamp(len / STICK_R, 0, 1);
-      Input.move.x = nx * mag; Input.move.y = -ny * mag;   // screen up = world -z
+      Input.move.x = nx * mag; Input.move.y = ny * mag;
       setStick(D.stickL, D.knobL, p.x0, p.y0, nx * cl, ny * cl, true);
     } else if (e.pointerId === aimId) {
-      if (len > 8) { Input.aim.x = nx; Input.aim.y = -ny; }
+      if (len > 8) { Input.aim.x = nx; Input.aim.y = ny; }
       setStick(D.stickR, D.knobR, p.x0, p.y0, nx * cl, ny * cl, true);
     }
   }
@@ -129,15 +133,15 @@
   window.addEventListener('pointercancel', onUp);
 
   /* --------------------------- mouse aim ---------------------------- */
-  let mouseX = 0, mouseY = 0, hasMouse = false;
+  let hasMouse = false;
   window.addEventListener('mousemove', (e) => {
     if (e.pointerType === 'touch') return;
-    mouseX = e.clientX; mouseY = e.clientY; hasMouse = true;
+    hasMouse = true;
   });
   window.addEventListener('mousedown', (e) => {
     if (!game || game.state !== 'playing') return;
     if (e.target.closest('.btn') || e.target.closest('#wbar')) return;
-    if (e.button === 0 && hasMouse && pointers.size === 0) { Input.firing = true; Input.aimActive = true; }
+    if (e.button === 0 && hasMouse && pointers.size === 0) Input.firing = true;
   });
   window.addEventListener('mouseup', (e) => {
     if (e.button === 0 && pointers.size === 0) { Input.firing = false; }
@@ -146,31 +150,6 @@
     if (!game || game.state !== 'playing') return;
     game.player.cycleWeapon(e.deltaY > 0 ? 1 : -1);
   }, { passive: true });
-
-  /** project the mouse onto the ground plane to get an aim direction */
-  function updateMouseAim() {
-    if (!hasMouse || !game || !game.world || pointers.size > 0) return;
-    const R = game.R;
-    const ndcX = (mouseX / window.innerWidth) * 2 - 1;
-    const ndcY = 1 - (mouseY / window.innerHeight) * 2;
-    const m = R.invVP;
-    const px = m[0] * ndcX + m[4] * ndcY + m[8] * 1 + m[12];
-    const py = m[1] * ndcX + m[5] * ndcY + m[9] * 1 + m[13];
-    const pz = m[2] * ndcX + m[6] * ndcY + m[10] * 1 + m[14];
-    const pw = m[3] * ndcX + m[7] * ndcY + m[11] * 1 + m[15];
-    if (Math.abs(pw) < 1e-6) return;
-    const wx = px / pw, wy = py / pw, wz = pz / pw;
-    const o = R.camPos;
-    const dy = wy - o[1];
-    if (Math.abs(dy) < 1e-5) return;
-    const targetY = game.player.y + 1.0;
-    const t = (targetY - o[1]) / dy;
-    if (t <= 0) return;
-    const hx = o[0] + (wx - o[0]) * t, hz = o[2] + (wz - o[2]) * t;
-    const ax = hx - game.player.x, az = hz - game.player.z;
-    const l = Math.hypot(ax, az);
-    if (l > 0.4) { Input.aim.x = ax / l; Input.aim.y = az / l; Input.aimActive = true; }
-  }
 
   /* --------------------------- keyboard ----------------------------- */
   const KEYMAP = {
@@ -202,8 +181,8 @@
     let x = 0, y = 0;
     if (Input.down('left')) x -= 1;
     if (Input.down('right')) x += 1;
-    if (Input.down('up')) y += 1;
-    if (Input.down('down')) y -= 1;
+    if (Input.down('up')) y -= 1;      // screen up = world -Z
+    if (Input.down('down')) y += 1;
     if (x || y) {
       const l = Math.hypot(x, y);
       Input.move.x = x / l; Input.move.y = y / l;
@@ -295,7 +274,6 @@
 
     if (game.state === 'playing') {
       keyboardMove();
-      updateMouseAim();
       if (Input.tap('heal')) game.useMedkit();
       if (Input.tap('dash')) game.dash();
       if (Input.tap('reload')) game.player.startReload();

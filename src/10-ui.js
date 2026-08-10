@@ -272,153 +272,353 @@ Object.assign(Game.prototype, {
     g.textAlign = 'center';
   },
 
-  /* ---------------------------- map screen ---------------------------- */
+  /* ---------------------------- map screen ----------------------------
+     Two maps in one: the level graph (where can I go, what is locked) and
+     the local floor plan (where have I been). Everything is drawn from the
+     same palette as the HUD so it reads as part of the same machine.      */
+  mapNodePos(l, gx, gy, gw, gh) {
+    return [gx + l.mapPos[0] * gw, gy + l.mapPos[1] * gh];
+  },
+
   drawMapScreen(g, W, H) {
-    g.fillStyle = 'rgba(8,10,8,.94)';
+    const t = this.time;
+    // ---- backdrop ----
+    g.fillStyle = '#07090a';
     g.fillRect(0, 0, W, H);
+    const bg = g.createRadialGradient(W * .5, H * .38, 20, W * .5, H * .38, Math.max(W, H) * .8);
+    bg.addColorStop(0, 'rgba(38,46,40,.55)');
+    bg.addColorStop(1, 'rgba(4,6,5,0)');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(120,140,110,.05)';
+    g.lineWidth = 1;
+    for (let x = 0; x < W; x += 26) { g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, H); g.stroke(); }
+    for (let y = 0; y < H; y += 26) { g.beginPath(); g.moveTo(0, y + .5); g.lineTo(W, y + .5); g.stroke(); }
 
+    // ---- header ----
+    const top = this.safeTop;
     g.textAlign = 'center';
-    g.font = 'bold 20px "Courier New", monospace';
+    g.font = 'bold 21px "Courier New", monospace';
+    g.fillStyle = 'rgba(0,0,0,.85)';
+    g.fillText('THE DEADGRID', W / 2 + 2, top + 36);
     g.fillStyle = HUDCOL.bone;
-    g.fillText('THE DEADGRID', W / 2, 34 + this.safeTop);
-    g.font = '10px "Courier New", monospace';
+    g.fillText('THE DEADGRID', W / 2, top + 34);
+
+    const done = this.visitedLevels.size, total = LEVELS.length;
+    g.font = '9px "Courier New", monospace';
     g.fillStyle = HUDCOL.dim;
-    g.fillText('AREAS DISCOVERED — ' + this.discovered.size + ' / ' + LEVELS.length, W / 2, 52 + this.safeTop);
+    g.fillText(`${done} / ${total} AREAS REACHED  ·  ${this.bossesKilled.size} / 6 BOSSES DOWN`, W / 2, top + 51);
+    // progress rule
+    const pw = Math.min(W - 60, 300), px0 = (W - pw) / 2, py0 = top + 58;
+    g.fillStyle = 'rgba(255,255,255,.09)';
+    g.fillRect(px0, py0, pw, 2);
+    g.fillStyle = HUDCOL.amber;
+    g.fillRect(px0, py0, pw * (done / total), 2);
 
-    // ---- graph ----
-    const gx = 22, gy = 68 + this.safeTop;
-    const gw = W - 44, gh = Math.min(H * .46, 330);
-    const nodePos = (l) => [gx + l.mapPos[0] * gw, gy + l.mapPos[1] * gh];
+    // ---- level graph ----
+    const gx = 26, gy = top + 76;
+    const gh = Math.min(H * .40, 300), gw = W - 52;
+    const pos = (l) => this.mapNodePos(l, gx, gy, gw, gh);
 
-    // links
-    g.lineWidth = 2;
+    // links first, so nodes sit on top
     for (const l of LEVELS) {
       if (!this.discovered.has(l.id)) continue;
-      const [ax, ay] = nodePos(l);
+      const [ax, ay] = pos(l);
       for (const ex of l.exits) {
-        const t = LEVEL_BY_ID[ex.to];
-        if (!this.discovered.has(t.id)) continue;
-        const [bx, by] = nodePos(t);
-        const locked = ex.key && !this.player.keys.has(ex.key) && !this.visitedLevels.has(t.id);
-        g.strokeStyle = locked ? 'rgba(217,72,59,.5)' : 'rgba(143,167,99,.55)';
-        g.setLineDash(locked ? [4, 4] : []);
-        g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+        const tgt = LEVEL_BY_ID[ex.to];
+        if (!this.discovered.has(tgt.id)) continue;
+        if (tgt.idx < l.idx) continue;                 // draw each pair once
+        const [bx, by] = pos(tgt);
+        const held = !ex.key || this.player.keys.has(ex.key);
+        const walked = this.visitedLevels.has(l.id) && this.visitedLevels.has(tgt.id);
+        // gentle arc so parallel links don't overlap
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const nx = -(by - ay), ny = (bx - ax);
+        const nl = Math.hypot(nx, ny) || 1;
+        const cx = mx + nx / nl * 14, cy = my + ny / nl * 14;
+        g.lineWidth = walked ? 2.5 : 2;
+        g.setLineDash(held ? [] : [5, 5]);
+        g.strokeStyle = !held ? 'rgba(217,72,59,.65)'
+          : walked ? 'rgba(143,167,99,.8)' : 'rgba(143,167,99,.35)';
+        g.beginPath();
+        g.moveTo(ax, ay); g.quadraticCurveTo(cx, cy, bx, by);
+        g.stroke();
+        g.setLineDash([]);
+        if (ex.key) {
+          // key marker at the arc midpoint
+          const qx = .25 * ax + .5 * cx + .25 * bx, qy = .25 * ay + .5 * cy + .25 * by;
+          g.fillStyle = '#0a0c0a';
+          g.beginPath(); g.arc(qx, qy, 7, 0, TAU); g.fill();
+          g.strokeStyle = held ? HUDCOL.green : hexCss(KEYS[ex.key].color);
+          g.lineWidth = 1.4;
+          g.beginPath(); g.arc(qx, qy, 7, 0, TAU); g.stroke();
+          g.fillStyle = held ? HUDCOL.green : hexCss(KEYS[ex.key].color);
+          g.font = 'bold 9px "Courier New", monospace';
+          g.fillText(held ? '✓' : '◆', qx, qy + 3.5);
+        }
       }
     }
-    g.setLineDash([]);
 
     // nodes
     for (const l of LEVELS) {
       const known = this.discovered.has(l.id);
-      const [x, y] = nodePos(l);
+      const [x, y] = pos(l);
       const cur = l.id === this.levelId;
       const visited = this.visitedLevels.has(l.id);
       const bossDown = l.boss && this.runState[l.id] && this.runState[l.id].bossDead;
-      const r = cur ? 13 : 10;
-
-      g.beginPath(); g.arc(x, y, r + 3, 0, TAU);
-      g.fillStyle = 'rgba(8,10,8,.9)'; g.fill();
+      const r = cur ? 13 : 10.5;
+      const biome = BIOMES[l.biome];
+      const tint = biome && biome.accent != null ? hexCss(biome.accent) : HUDCOL.amber;
 
       if (!known) {
-        g.strokeStyle = 'rgba(90,90,80,.5)'; g.lineWidth = 1.5;
         g.setLineDash([3, 3]);
-        g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+        g.strokeStyle = 'rgba(110,110,98,.45)'; g.lineWidth = 1.4;
+        g.beginPath(); g.arc(x, y, 9.5, 0, TAU); g.stroke();
         g.setLineDash([]);
-        g.fillStyle = 'rgba(90,90,80,.7)';
-        g.font = 'bold 12px "Courier New", monospace';
+        g.fillStyle = 'rgba(110,110,98,.6)';
+        g.font = 'bold 11px "Courier New", monospace';
         g.fillText('?', x, y + 4);
         continue;
       }
-      const bc = BIOMES[l.biome];
-      const base = bc && bc.accent ? hexCss(bc.accent) : HUDCOL.amber;
-      g.beginPath(); g.arc(x, y, r, 0, TAU);
-      g.fillStyle = visited ? 'rgba(40,48,36,.95)' : 'rgba(24,28,22,.95)';
-      g.fill();
-      g.lineWidth = cur ? 3 : 2;
-      g.strokeStyle = cur ? HUDCOL.bone : (visited ? base : 'rgba(143,138,116,.7)');
-      g.stroke();
 
+      if (cur) {                                        // pulsing halo on "you are here"
+        const pr = r + 6 + Math.sin(t * 3) * 3;
+        g.strokeStyle = `rgba(228,220,196,${.35 + Math.sin(t * 3) * .18})`;
+        g.lineWidth = 1.5;
+        g.beginPath(); g.arc(x, y, pr, 0, TAU); g.stroke();
+      }
+      // disc
+      const grad = g.createRadialGradient(x - r * .3, y - r * .4, 1, x, y, r);
+      grad.addColorStop(0, visited ? 'rgba(62,72,54,.98)' : 'rgba(26,30,24,.98)');
+      grad.addColorStop(1, 'rgba(10,13,10,.98)');
+      g.fillStyle = grad;
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+      // ring
+      g.lineWidth = cur ? 2.6 : 1.8;
+      g.strokeStyle = cur ? HUDCOL.bone : (visited ? tint : 'rgba(143,138,116,.55)');
+      if (l.optional) g.setLineDash([4, 3]);
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+      g.setLineDash([]);
+      // badge
+      g.font = 'bold 11px "Courier New", monospace';
       if (l.boss) {
         g.fillStyle = bossDown ? HUDCOL.green : HUDCOL.blood;
-        g.font = 'bold 11px "Courier New", monospace';
         g.fillText(bossDown ? '✓' : '☠', x, y + 4);
-      } else if (cur) {
-        g.fillStyle = HUDCOL.bone;
-        g.beginPath(); g.arc(x, y, 3.5, 0, TAU); g.fill();
+      } else if (visited) {
+        g.fillStyle = 'rgba(228,220,196,.75)';
+        g.beginPath(); g.arc(x, y, 2.6, 0, TAU); g.fill();
       }
-      g.font = (cur ? 'bold ' : '') + '9px "Courier New", monospace';
-      g.fillStyle = cur ? HUDCOL.bone : HUDCOL.dim;
+      // label
+      g.font = (cur ? 'bold ' : '') + '8.5px "Courier New", monospace';
+      const lw2 = g.measureText(l.short).width + 8;
+      g.fillStyle = 'rgba(7,9,10,.88)';
+      g.fillRect(x - lw2 / 2, y + r + 4, lw2, 11);
+      g.fillStyle = cur ? HUDCOL.bone : (visited ? HUDCOL.dim : 'rgba(143,138,116,.65)');
       g.fillText(l.short, x, y + r + 12);
-      if (l.optional) {
-        g.fillStyle = 'rgba(159,232,255,.7)';
-        g.font = '8px "Courier New", monospace';
-        g.fillText('OPTIONAL', x, y + r + 22);
-      }
     }
 
-    // ---- current level map ----
-    const my = gy + gh + 22;
-    const ms = Math.min(W - 60, H - my - 120);
+    // legend
+    const ly = gy + gh + 20;
+    g.font = '8px "Courier New", monospace';
+    g.textAlign = 'left';
+    const legend = [['☠', HUDCOL.blood, 'BOSS'], ['◆', HUDCOL.amber, 'NEEDS KEY'], ['?', 'rgba(110,110,98,.8)', 'UNKNOWN']];
+    let lx = gx;
+    for (const [icon, col, label] of legend) {
+      g.fillStyle = col; g.fillText(icon, lx, ly);
+      g.fillStyle = HUDCOL.dim; g.fillText(label, lx + 10, ly);
+      lx += 16 + g.measureText(label).width;
+    }
+    g.textAlign = 'center';
+
+    // ---- local floor plan ----
+    const my = ly + 16;
+    const ms = Math.min(W - 56, H - my - 118);
     if (ms > 60 && this.mapCanvas) {
       const mx = (W - ms) / 2;
-      g.fillStyle = 'rgba(6,8,6,.9)';
+      g.font = 'bold 10px "Courier New", monospace';
+      g.fillStyle = HUDCOL.amber;
+      g.fillText(this.level.name, W / 2, my - 7);
+
+      g.fillStyle = 'rgba(4,6,5,.92)';
       g.fillRect(mx, my, ms, ms);
       g.imageSmoothingEnabled = false;
+      g.globalAlpha = .95;
       g.drawImage(this.mapCanvas, 0, 0, this.world.w, this.world.h, mx, my, ms, ms);
+      g.globalAlpha = 1;
+
       const sc = ms / this.world.w;
-      // exits + player
-      for (const ex of this.world.exits) {
-        const ux = mx + (ex.x + this.world.w / 2) * sc, uy = my + (ex.z + this.world.h / 2) * sc;
-        const locked = ex.key && !this.player.keys.has(ex.key);
-        g.fillStyle = locked ? HUDCOL.blood : '#7fe89a';
-        g.fillRect(ux - 3, uy - 3, 6, 6);
-        g.font = '8px "Courier New", monospace';
-        g.fillText(ex.label, ux, uy - 6);
-      }
+      const px = (wx) => mx + (wx + this.world.w / 2) * sc;
+      const pz = (wz) => my + (wz + this.world.h / 2) * sc;
+
       // key containers, but only where the player has actually been
       for (const c of this.world.containers) {
         if (c.opened || !c.key) continue;
         const [ci, cj] = this.world.cellOf(c.x, c.z);
         if (!this.world.inB(ci, cj) || !this.world.visited[this.world.idx(ci, cj)]) continue;
-        const kx = mx + (c.x + this.world.w / 2) * sc, ky2 = my + (c.z + this.world.h / 2) * sc;
+        const kx = px(c.x), ky2 = pz(c.z);
+        const pulse = .6 + .4 * Math.sin(t * 4 + c.id);
         g.fillStyle = hexCss(KEYS[c.key].color);
+        g.globalAlpha = pulse;
         g.beginPath();
-        g.moveTo(kx, ky2 - 4); g.lineTo(kx + 4, ky2); g.lineTo(kx, ky2 + 4); g.lineTo(kx - 4, ky2);
+        g.moveTo(kx, ky2 - 5); g.lineTo(kx + 5, ky2); g.lineTo(kx, ky2 + 5); g.lineTo(kx - 5, ky2);
         g.closePath(); g.fill();
+        g.globalAlpha = 1;
       }
-      const ux = mx + (this.player.x + this.world.w / 2) * sc, uy = my + (this.player.z + this.world.h / 2) * sc;
+
+      // exits
+      g.font = '7.5px "Courier New", monospace';
+      for (const ex of this.world.exits) {
+        const ux = px(ex.x), uy = pz(ex.z);
+        const locked = ex.key && !this.player.keys.has(ex.key);
+        const col = locked ? HUDCOL.blood : '#7fe89a';
+        g.fillStyle = col;
+        g.fillRect(ux - 3.5, uy - 3.5, 7, 7);
+        const lw = g.measureText(ex.label).width + 6;
+        const lxc = clamp(ux, mx + lw / 2 + 2, mx + ms - lw / 2 - 2);
+        const lyc = uy - 16 < my + 2 ? uy + 8 : uy - 16;
+        g.fillStyle = 'rgba(4,6,5,.85)';
+        g.fillRect(lxc - lw / 2, lyc, lw, 10);
+        g.fillStyle = col;
+        g.fillText(ex.label, lxc, lyc + 7.5);
+      }
+
+      // player
+      const ux = px(this.player.x), uy = pz(this.player.z);
+      g.strokeStyle = `rgba(228,220,196,${.3 + Math.sin(t * 3) * .2})`;
+      g.lineWidth = 1;
+      g.beginPath(); g.arc(ux, uy, 7 + Math.sin(t * 3) * 2, 0, TAU); g.stroke();
       g.fillStyle = HUDCOL.bone;
-      g.beginPath(); g.arc(ux, uy, 3.5, 0, TAU); g.fill();
-      g.strokeStyle = 'rgba(143,138,116,.6)'; g.lineWidth = 1;
-      g.strokeRect(mx, my, ms, ms);
-      g.font = 'bold 10px "Courier New", monospace';
-      g.fillStyle = HUDCOL.amber;
-      g.fillText(this.level.name, W / 2, my - 6);
+      g.beginPath();
+      g.moveTo(ux + Math.sin(this.player.yaw) * 6, uy + Math.cos(this.player.yaw) * 6);
+      g.lineTo(ux + Math.sin(this.player.yaw + 2.5) * 4.5, uy + Math.cos(this.player.yaw + 2.5) * 4.5);
+      g.lineTo(ux + Math.sin(this.player.yaw - 2.5) * 4.5, uy + Math.cos(this.player.yaw - 2.5) * 4.5);
+      g.closePath(); g.fill();
+
+      // frame with corner brackets
+      g.strokeStyle = 'rgba(143,138,116,.5)'; g.lineWidth = 1;
+      g.strokeRect(mx + .5, my + .5, ms - 1, ms - 1);
+      g.strokeStyle = HUDCOL.amber; g.lineWidth = 2;
+      const cb = 12;
+      for (const [sx, sy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const ax2 = mx + sx * ms, ay2 = my + sy * ms;
+        const dx = sx ? -cb : cb, dy = sy ? -cb : cb;
+        g.beginPath();
+        g.moveTo(ax2 + dx, ay2); g.lineTo(ax2, ay2); g.lineTo(ax2, ay2 + dy);
+        g.stroke();
+      }
     }
 
     // ---- keys held ----
-    const keys = [...this.player.keys];
-    g.font = '10px "Courier New", monospace';
     g.textAlign = 'left';
-    let ky = H - 74;
+    const keys = [...this.player.keys];
+    let ky = H - 86;
+    g.font = '9px "Courier New", monospace';
     g.fillStyle = HUDCOL.dim;
-    g.fillText('KEYS HELD', 22, ky);
+    g.fillText('KEYS HELD', 26, ky);
     ky += 14;
-    if (!keys.length) { g.fillStyle = 'rgba(120,116,100,.7)'; g.fillText('— none —', 22, ky); }
-    else {
-      let kx = 22;
+    if (!keys.length) {
+      g.fillStyle = 'rgba(120,116,100,.6)';
+      g.fillText('— none —', 26, ky);
+    } else {
+      let kx = 26;
       for (const k of keys) {
         const kd = KEYS[k];
-        g.fillStyle = hexCss(kd.color);
-        g.fillText('◆ ' + kd.name, kx, ky);
-        ky += 13;
+        g.font = '8.5px "Courier New", monospace';
+        const cw = g.measureText(kd.name).width + 18;
+        if (kx + cw > W - 26) { kx = 26; ky += 16; }
         if (ky > H - 26) break;
+        g.fillStyle = 'rgba(255,255,255,.05)';
+        g.fillRect(kx, ky - 9, cw, 13);
+        g.fillStyle = hexCss(kd.color);
+        g.fillText('◆', kx + 5, ky + 1);
+        g.fillStyle = HUDCOL.bone;
+        g.fillText(kd.name, kx + 14, ky + 1);
+        kx += cw + 5;
       }
     }
+
     g.textAlign = 'center';
-    g.fillStyle = HUDCOL.dim;
-    g.font = '10px "Courier New", monospace';
-    g.fillText('TAP ANYWHERE OR PRESS M TO CLOSE', W / 2, H - 16);
+    g.fillStyle = 'rgba(143,138,116,.75)';
+    g.font = '9px "Courier New", monospace';
+    g.fillText('TAP ANYWHERE  ·  M TO CLOSE', W / 2, H - 16);
+  },
+
+
+  /* --------------------------- ammo / mana bar ------------------------
+     A bar reads "how long until I have to stop shooting" far faster than a
+     number does. Rounds are drawn as segments; a ghost trail lags behind the
+     drain, the leading edge flashes per shot, and a reload sweeps the bar.  */
+  updateAmmoBar(P, w, isMagic, D) {
+    const wrap = D.ammoWrap;
+    if (!wrap) return;
+    if (w.kind === 'melee') { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    let cur, max, segs, reserveTxt, lowAt, critAt;
+    if (isMagic) {
+      cur = P.mana; max = Math.max(1, P.stats.maxMana);
+      segs = Math.max(1, Math.round(max / w.mana));
+      reserveTxt = '\u2212' + w.mana;
+      lowAt = w.mana * 2.5 / max; critAt = w.mana / max;
+      const c = hexCss(w.color);
+      const rgb = [(w.color >> 16) & 255, (w.color >> 8) & 255, w.color & 255];
+      const mixc = (t) => `rgb(${rgb.map(v => Math.round(lerp(v, t > 0 ? 255 : 0, Math.abs(t)))).join(',')})`;
+      wrap.style.setProperty('--ac1', mixc(.55));
+      wrap.style.setProperty('--ac2', c);
+      wrap.style.setProperty('--ac3', mixc(-.55));
+      wrap.style.setProperty('--acg', rgb.join(','));
+    } else {
+      cur = P.mags[w.id] || 0; max = w.mag;
+      segs = max;
+      reserveTxt = String(P.ammo[w.ammo]);
+      lowAt = .35; critAt = .16;
+      wrap.style.removeProperty('--ac1'); wrap.style.removeProperty('--ac2');
+      wrap.style.removeProperty('--ac3'); wrap.style.removeProperty('--acg');
+    }
+
+    const frac = clamp(cur / max, 0, 1);
+    const reloading = P.reloadT > 0;
+    let pct;
+    if (reloading) {
+      pct = (1 - P.reloadT / Math.max(.001, P.reloadTotal)) * 100;
+      wrap.classList.add('reloading');
+    } else {
+      pct = frac * 100;
+      wrap.classList.remove('reloading');
+    }
+    wrap.classList.toggle('low', !reloading && frac <= lowAt && frac > critAt);
+    wrap.classList.toggle('crit', !reloading && frac <= critAt);
+
+    D.ammoFill.style.width = pct.toFixed(2) + '%';
+
+    // ghost: snaps up on gain, drains slowly on spend
+    const prev = this._ammoPct == null ? pct : this._ammoPct;
+    if (pct > prev + 0.01) {
+      D.ammoGhost.style.transition = 'none';
+      D.ammoGhost.style.width = pct.toFixed(2) + '%';
+      void D.ammoGhost.offsetWidth;
+      D.ammoGhost.style.transition = '';
+    } else {
+      D.ammoGhost.style.width = pct.toFixed(2) + '%';
+    }
+
+    // leading-edge muzzle flash on spend
+    if (pct < prev - 0.01 && !reloading) {
+      D.ammoEdge.style.left = pct.toFixed(2) + '%';
+      D.ammoEdge.classList.remove('flash');
+      void D.ammoEdge.offsetWidth;
+      D.ammoEdge.classList.add('flash');
+    }
+    this._ammoPct = pct;
+
+    if (this._ammoSegs !== segs) {
+      this._ammoSegs = segs;
+      D.ammoTicks.style.display = segs <= 40 ? '' : 'none';
+      D.ammoTicks.style.setProperty('--seg', (100 / segs).toFixed(3) + '%');
+    }
+    const magTxt = isMagic ? String(Math.floor(cur)) : String(cur);
+    if (D.ammoMag.textContent !== magTxt) D.ammoMag.textContent = magTxt;
+    if (D.ammoRes.textContent !== reserveTxt) D.ammoRes.textContent = reserveTxt;
   },
 
   /* ------------------------------- HUD -------------------------------- */
@@ -451,21 +651,7 @@ Object.assign(Game.prototype, {
     D.wpnName.style.color = isMagic ? hexCss(w.color) : (w.kind === 'melee' ? HUDCOL.bone : HUDCOL.amber);
     D.wpnClass.textContent = w.cls || (w.kind === 'melee' ? 'MELEE' : '');
 
-    if (w.kind === 'gun') {
-      D.ammo.style.display = '';
-      const mag = P.mags[w.id] || 0;
-      D.ammo.innerHTML = `<b>${mag}</b> / ${P.ammo[w.ammo]}`;
-      D.ammo.style.color = mag === 0 ? HUDCOL.blood : (mag <= w.mag * .25 ? HUDCOL.amber : HUDCOL.bone);
-    } else if (isMagic) {
-      D.ammo.style.display = '';
-      D.ammo.innerHTML = `<b>${Math.floor(P.mana)}</b> MANA · ${w.mana}/CAST`;
-      D.ammo.style.color = P.mana < w.mana ? HUDCOL.blood : hexCss(w.color);
-    } else {
-      D.ammo.style.display = 'none';
-    }
-
-    D.reload.style.display = P.reloadT > 0 ? '' : 'none';
-    if (P.reloadT > 0) D.reloadBar.style.width = ((1 - P.reloadT / P.reloadTotal) * 100) + '%';
+    this.updateAmmoBar(P, w, isMagic, D);
 
     D.med.textContent = P.medkits;
     D.medBtn.classList.toggle('empty', P.medkits <= 0);

@@ -294,11 +294,13 @@ class Game {
   updateCamera(dt) {
     const P = this.player;
     const lead = 3.2;
-    const tx = P.x + Math.sin(P.yaw) * lead * (Input.aimActive ? 1 : .35);
-    const tz = P.z + Math.cos(P.yaw) * lead * (Input.aimActive ? 1 : .35);
+    // lead the camera toward where the player is facing / walking
+    const leadK = Input.aimActive ? 1 : (0.35 + clamp(P.moveAmt, 0, 1) * 0.55);
+    const tx = P.x + Math.sin(P.yaw) * lead * leadK;
+    const tz = P.z + Math.cos(P.yaw) * lead * leadK;
     const fit = this.fitCamera(this.boss && !this.boss.dead ? 6 : 0);
     let dist = fit.dist, hgt = fit.hgt;
-    this.R.shadowExtent = clamp(fit.d * 0.78, 26, 52);
+    this.R.shadowExtent = clamp(fit.d * 1.05, 30, 62);
     const k = this.camSnap ? 1 : clamp(dt * 5.5, 0, 1);
     this.camLook[0] = lerp(this.camLook[0], tx, k);
     this.camLook[2] = lerp(this.camLook[2], tz, k);
@@ -567,6 +569,7 @@ class Game {
     const col = hexLin(def.color);
     const open = c.opened;
     const m = mat(open ? [col[0] * .45, col[1] * .45, col[2] * .45] : col, .75, null, def.metal || 0);
+    m.tex = def.tex || 0; m.texScale = def.texScale || 1; m.texStr = .16;
     const h = def.h, w = def.w;
     m4.composeY(_E, c.x, h / 2, c.z, c.ry, w, h, w * .8);
     R.push('box', _E, m);
@@ -633,8 +636,9 @@ class Game {
       }
       R.particle(true, ox + dx * len, 1.15, oz + dz * len, .4, c[0], c[1], c[2], .8, 0, 0, 0, 0);
     }
-    // subtle aim arc on the ground
-    if (Input.aimActive) {
+    // subtle aim arc on the ground — facing is the firing line, so show it
+    // whenever the player is moving or shooting
+    if (Input.aimActive || Input.firing || P.moveAmt > .15) {
       const dx = Math.sin(P.yaw), dz = Math.cos(P.yaw);
       for (let i = 1; i <= 4; i++) {
         const d = 1.4 + i * .7;

@@ -18,6 +18,7 @@ layout(location=6) in vec4 iM3;
 layout(location=7) in vec4 iColor;    // rgb + roughness
 layout(location=8) in vec4 iEmiss;    // rgb + metalness
 layout(location=9) in vec4 iParams;   // matType, anim, aoMul, alpha
+layout(location=10) in vec4 iTex;     // texId, texScale, texStrength, texOffset
 
 mat4 instMat(){ return mat4(iM0,iM1,iM2,iM3); }
 
@@ -227,6 +228,7 @@ out vec2 vUV;
 out vec4 vColor;
 out vec4 vEmiss;
 out vec4 vParams;
+out vec4 vTex;
 out vec3 vLocal;
 void main(){
   mat4 M = instMat();
@@ -236,7 +238,7 @@ void main(){
   vLocal = aPos;
   vNormal = normalize(instNormalMat(M) * aNormal);
   vUV = aUV;
-  vColor = iColor; vEmiss = iEmiss; vParams = iParams;
+  vColor = iColor; vEmiss = iEmiss; vParams = iParams; vTex = iTex;
   gl_Position = uVP * vec4(wp,1.0);
 }`;
 
@@ -250,6 +252,7 @@ in vec2 vUV;
 in vec4 vColor;
 in vec4 vEmiss;
 in vec4 vParams;
+in vec4 vTex;
 in vec3 vLocal;
 
 uniform vec3 uCamPos;
@@ -260,7 +263,7 @@ uniform sampler2DShadow uShadowMap;
 uniform sampler2D uGI;         // rgb = bounced irradiance, a = sky visibility
 uniform sampler2D uAO;
 uniform vec4 uGIRect;          // originX, originZ, 1/sizeX, 1/sizeZ
-uniform float uGIStrength, uShadowTexel, uTime, uAOEnabled;
+uniform float uGIStrength, uShadowTexel, uTime, uAOEnabled, uDetail;
 uniform vec2 uScreenSize;
 uniform vec3 uFogColor;
 uniform vec2 uFog;             // density, heightFalloff
@@ -283,6 +286,149 @@ float vnoise3(vec3 p){
              mix(mix(n001,n101,f.x), mix(n011,n111,f.x), f.y), f.z);
 }
 
+/* ======================================================================
+   Procedural surface detail.
+   Patterns are evaluated in world space and projected on the dominant
+   axis, so the same brick or plank size holds no matter how an instance
+   is scaled, and neighbouring instances line up into continuous walls.
+   Each pattern gives a height (differenced into a normal perturbation)
+   and a brightness/roughness multiplier layered over the biome colour.
+   ====================================================================== */
+float th21(vec2 p){ p = fract(p*vec2(443.897,441.423)); p += dot(p,p+19.19); return fract(p.x*p.y); }
+vec2 th22(vec2 p){ return vec2(th21(p), th21(p+19.73)); }
+float tvn(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(mix(th21(i), th21(i+vec2(1,0)), f.x),
+             mix(th21(i+vec2(0,1)), th21(i+vec2(1,1)), f.x), f.y);
+}
+float tfbm(vec2 p){
+  float s=0.0, a=0.5;
+  for(int i=0;i<3;i++){ s += a*tvn(p); p*=2.07; a*=0.5; }
+  return s;
+}
+// running-bond cell: bricks are twice as long as they are tall
+vec2 brickCell(vec2 uv, out vec2 f){
+  vec2 b = vec2(uv.x*0.5, uv.y);
+  b.x += mod(floor(b.y), 2.0)*0.5;
+  f = fract(b);
+  return floor(b);
+}
+
+float dTexH(int id, vec2 uv){
+  if(id==1){                                    // brick
+    vec2 f; brickCell(uv, f);
+    float m = smoothstep(0.0,0.07,f.x)*smoothstep(1.0,0.93,f.x)
+            * smoothstep(0.0,0.13,f.y)*smoothstep(1.0,0.87,f.y);
+    return m*0.8 + tvn(uv*9.0)*0.2;
+  }
+  if(id==2){                                    // planks
+    float f = fract(uv.y);
+    float seam = smoothstep(0.0,0.08,f)*smoothstep(1.0,0.92,f);
+    float grain = tvn(vec2(uv.x*2.5, floor(uv.y)*13.0 + uv.y*2.0));
+    float knot = smoothstep(0.88,1.0, tvn(vec2(uv.x*0.7, floor(uv.y)*5.0)));
+    return seam*0.72 + grain*0.28 - knot*0.4;
+  }
+  if(id==3){                                    // concrete: blotches + cracks
+    float n = tfbm(uv*1.5);
+    float cr = 1.0 - smoothstep(0.0,0.06, abs(tfbm(uv*0.85+11.3)-0.5));
+    return n - cr*0.55;
+  }
+  if(id==4){                                    // metal panels + rivets
+    vec2 f = fract(uv);
+    float seam = smoothstep(0.0,0.05,f.x)*smoothstep(1.0,0.95,f.x)
+               * smoothstep(0.0,0.05,f.y)*smoothstep(1.0,0.95,f.y);
+    vec2 r = abs(f-0.5)*2.0;
+    float rv = 1.0 - smoothstep(0.09,0.15, length(max(r-0.74, 0.0)));
+    return seam*0.78 + rv*0.32 + tvn(vec2(uv.x*34.0, uv.y*2.0))*0.1;
+  }
+  if(id==5){                                    // tiles
+    vec2 f = fract(uv);
+    float g = smoothstep(0.0,0.055,f.x)*smoothstep(1.0,0.945,f.x)
+            * smoothstep(0.0,0.055,f.y)*smoothstep(1.0,0.945,f.y);
+    return g*0.84 + tvn(uv*13.0)*0.16;
+  }
+  if(id==6){                                    // grit / gravel ground
+    return tfbm(uv*2.2)*0.62 + tvn(uv*7.0)*0.38;
+  }
+  if(id==7){                                    // foliage mottle
+    return tvn(uv*6.0)*0.55 + tvn(uv*17.0)*0.45;
+  }
+  if(id==8){                                    // irregular stone blocks
+    vec2 c = floor(uv), f = fract(uv);
+    vec2 j = th22(c)*0.3 - 0.15;
+    vec2 d = abs(f-0.5-j);
+    return smoothstep(0.5,0.4, max(d.x,d.y))*0.8 + tvn(uv*8.0)*0.2;
+  }
+  return 0.0;
+}
+
+// brightness multiplier + roughness multiplier
+float dTexTint(int id, vec2 uv, out float rmul){
+  rmul = 1.0;
+  if(id==1){
+    vec2 f; vec2 c = brickCell(uv, f);
+    float m = smoothstep(0.0,0.07,f.x)*smoothstep(1.0,0.93,f.x)
+            * smoothstep(0.0,0.13,f.y)*smoothstep(1.0,0.87,f.y);
+    float brick = 0.72 + th21(c)*0.55;
+    rmul = mix(1.22, 0.92, m);
+    return mix(1.18, brick, m);                 // mortar is paler and rougher
+  }
+  if(id==2){
+    float p = floor(uv.y);
+    float f = fract(uv.y);
+    float seam = smoothstep(0.0,0.08,f)*smoothstep(1.0,0.92,f);
+    float plank = 0.78 + th21(vec2(p,3.0))*0.42;
+    float grain = 0.86 + tvn(vec2(uv.x*2.5, p*13.0))*0.28;
+    rmul = mix(1.15, 0.95, seam);
+    return mix(0.6, plank*grain, seam);
+  }
+  if(id==3){
+    float n = tfbm(uv*1.5);
+    float cr = 1.0 - smoothstep(0.0,0.06, abs(tfbm(uv*0.85+11.3)-0.5));
+    rmul = 1.0 + cr*0.22;
+    return (0.88 + n*0.24) * (1.0 - cr*0.30);
+  }
+  if(id==4){
+    vec2 f = fract(uv);
+    vec2 r = abs(f-0.5)*2.0;
+    float rv = 1.0 - smoothstep(0.09,0.15, length(max(r-0.74, 0.0)));
+    float seam = smoothstep(0.0,0.05,f.x)*smoothstep(1.0,0.95,f.x)
+               * smoothstep(0.0,0.05,f.y)*smoothstep(1.0,0.95,f.y);
+    float panel = 0.86 + th21(floor(uv))*0.26;
+    float brush = 0.92 + tvn(vec2(uv.x*34.0, uv.y*2.0))*0.16;
+    rmul = mix(1.1, 0.82, seam) * (1.0 - rv*0.25);
+    return mix(0.55, panel*brush, seam) + rv*0.22;
+  }
+  if(id==5){
+    vec2 f = fract(uv);
+    float g = smoothstep(0.0,0.055,f.x)*smoothstep(1.0,0.945,f.x)
+            * smoothstep(0.0,0.055,f.y)*smoothstep(1.0,0.945,f.y);
+    float tile = 0.84 + th21(floor(uv))*0.34;
+    rmul = mix(1.3, 0.78, g);
+    return mix(0.72, tile, g);
+  }
+  if(id==6){
+    float n = tfbm(uv*2.2);
+    rmul = 1.04 + n*0.08;
+    return 0.84 + n*0.32;
+  }
+  if(id==7){
+    float n = tvn(uv*6.0)*0.6 + tvn(uv*17.0)*0.4;
+    rmul = 1.0;
+    return 0.7 + n*0.62;
+  }
+  if(id==8){
+    vec2 c = floor(uv), f = fract(uv);
+    vec2 j = th22(c)*0.3 - 0.15;
+    vec2 d = abs(f-0.5-j);
+    float m = smoothstep(0.5,0.4, max(d.x,d.y));
+    rmul = mix(1.2, 0.95, m);
+    return mix(1.1, 0.7 + th21(c)*0.6, m);
+  }
+  return 1.0;
+}
+
 float D_GGX(float NoH, float a){
   float a2 = a*a;
   float d = NoH*NoH*(a2-1.0)+1.0;
@@ -299,14 +445,19 @@ vec3 F_Schlick(vec3 f0, float u){ return f0 + (1.0-f0)*pow(1.0-u, 5.0); }
 float sampleShadow(vec3 wp, float NoL){
   vec4 lp = uLightVP * vec4(wp, 1.0);
   vec3 pc = lp.xyz / lp.w * 0.5 + 0.5;
-  if(pc.x<0.005||pc.x>0.995||pc.y<0.005||pc.y>0.995||pc.z>0.999) return 1.0;
+  if(pc.x<0.0||pc.x>1.0||pc.y<0.0||pc.y>1.0||pc.z>0.999) return 1.0;
   float bias = mix(0.0016, 0.00035, NoL);
   pc.z -= bias;
   float s = 0.0;
   // 5-tap poisson PCF
   const vec2 P[5] = vec2[5](vec2(0.0,0.0), vec2(0.94,0.19), vec2(-0.72,0.61), vec2(-0.35,-0.87), vec2(0.51,-0.72));
   for(int i=0;i<5;i++) s += texture(uShadowMap, vec3(pc.xy + P[i]*uShadowTexel*1.4, pc.z));
-  return s / 5.0;
+  s /= 5.0;
+  // dissolve toward "lit" at the edge of the map, otherwise the boundary
+  // draws a hard rectangle across the ground
+  vec2 ec = abs(pc.xy - 0.5) * 2.0;
+  float edge = 1.0 - smoothstep(0.80, 0.99, max(ec.x, ec.y));
+  return mix(1.0, s, edge);
 }
 
 void main(){
@@ -320,10 +471,42 @@ void main(){
   vec3 emissive = vEmiss.rgb;
   float alpha = vParams.w;
 
-  // ---- procedural surface detail: breaks up flat faces ----
-  float grain = vnoise3(vWorld * 3.1) * 0.5 + vnoise3(vWorld * 11.0) * 0.28 + vnoise3(vWorld*37.0)*0.12;
-  albedo *= 0.82 + grain * 0.36;
-  rough = clamp(rough * (0.86 + grain * 0.3), 0.045, 1.0);
+  // ---- procedural surface detail ----
+  float grain = vnoise3(vWorld * 3.1) * 0.5 + vnoise3(vWorld * 13.0) * 0.5;
+  albedo *= 0.9 + grain * 0.2;
+  rough = clamp(rough * (0.92 + grain * 0.16), 0.045, 1.0);
+
+  int texId = int(vTex.x + 0.5);
+  if(texId > 0 && uDetail > 0.5){
+    // project on the dominant axis so scale is world-consistent
+    vec3 an = abs(N);
+    vec2 uv; vec3 Tt, Bt;
+    if(an.y >= an.x && an.y >= an.z){ uv = vWorld.xz; Tt = vec3(1,0,0); Bt = vec3(0,0,1); }
+    else if(an.x >= an.z){ uv = vWorld.zy; Tt = vec3(0,0,1); Bt = vec3(0,1,0); }
+    else { uv = vWorld.xy; Tt = vec3(1,0,0); Bt = vec3(0,1,0); }
+    uv = uv * vTex.y + vTex.w;
+
+    // Procedural patterns have no mip chain, so they alias hard once a cell
+    // shrinks below a pixel. Measure the on-screen cell size and dissolve the
+    // pattern back to flat before it can shimmer.
+    float cellPx = max(fwidth(uv.x), fwidth(uv.y));
+    float fade = 1.0 - smoothstep(0.30, 0.85, cellPx);
+
+    if(fade > 0.01){
+      float rmul;
+      float tint = dTexTint(texId, uv, rmul);
+      albedo *= mix(1.0, tint, fade);
+      rough = clamp(rough * mix(1.0, rmul, fade), 0.045, 1.0);
+
+      // finite-difference the height field into a normal perturbation
+      float e = 0.45;
+      float h0 = dTexH(texId, uv);
+      float hx = dTexH(texId, uv + vec2(e, 0.0));
+      float hy = dTexH(texId, uv + vec2(0.0, e));
+      vec2 g2 = vec2(hx - h0, hy - h0) / e;
+      N = normalize(N - (Tt*g2.x + Bt*g2.y) * vTex.z * fade);
+    }
+  }
 
   if(matType > 0.5 && matType < 1.5){          // water: animated ripple normal
     float w1 = sin(vWorld.x*2.2 + uTime*1.6) * cos(vWorld.z*1.9 - uTime*1.1);
@@ -566,7 +749,7 @@ void main(){
   float r2 = dot(fromCenter, fromCenter);
 
   // barrel-ish chromatic aberration, stronger at edges & when hurt
-  float ca = (0.0016 + uChroma * 0.012) * (0.25 + r2*3.0);
+  float ca = (0.0007 + uChroma * 0.012) * (0.25 + r2*3.0);
   vec3 col;
   col.r = texture(uScene, uv - fromCenter*ca).r;
   col.g = texture(uScene, uv).g;

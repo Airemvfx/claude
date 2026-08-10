@@ -24,6 +24,13 @@ external scripts, and it keeps the whole game one file):
   shadows.
 - **PBR-ish shading** — GGX specular, hemisphere ambient, up to 16 dynamic
   point lights for muzzle flashes, fireballs, magic projectiles and pickups.
+- **Procedural surface detail** — brick, plank, concrete, panelled metal,
+  tile, grit, foliage and ashlar stone, evaluated in world space and
+  projected on the dominant axis so the cell size is the same however an
+  instance is scaled and neighbouring walls line up into continuous
+  courses. Each pattern's height field is differenced into a normal
+  perturbation, and the whole thing dissolves back to flat once a cell
+  shrinks below a pixel, which is what keeps it from shimmering.
 - **Post** — bright-pass bloom with a 5-level tent-filter chain, ACES
   tonemap, gamma, contrast/saturation grade, per-biome lift/gain, vignette,
   film grain, chromatic aberration that rises as you take damage.
@@ -69,14 +76,21 @@ a guardian ward that shockwaves attackers, and boss-only frames.
 **Elites, status effects and hazards** — burn, poison, bleed, slow, freeze
 and stun; toxic clouds, fire pools, meteor markers and boss beams.
 
+**Readable HUD** — the magazine is a segmented bar rather than a number, so
+"how long can I keep shooting" is a glance instead of arithmetic: rounds are
+drawn as ticks, a ghost trail lags the drain, the leading edge flashes on
+every shot, low and critical states pulse, and reloading sweeps the bar.
+Magic weapons reuse it for mana, tinted to the school and segmented by
+cast cost.
+
 ## Controls
 
 | | |
 |---|---|
 | Left thumb | move (virtual stick, anywhere on the left half) |
 | Right thumb | aim and fire (twin-stick) |
-| WASD / arrows | move |
-| Mouse | aim, click to fire |
+| WASD / arrows | move — and the direction you walk is the direction you shoot |
+| Mouse | click to fire along your facing |
 | E | loot / use exit |
 | R | reload |
 | Space | dash (i-frames) |
