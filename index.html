@@ -7483,6 +7483,16 @@ Object.assign(Game.prototype, {
    ========================================================================== */
 
 (function () {
+  // When embedded (e.g. published as an artifact) the host supplies its own
+  // viewport meta, which drops viewport-fit/user-scalable. Re-assert ours so
+  // safe-area insets resolve and a stray pinch can't zoom mid-fight.
+  (function fixViewport() {
+    const want = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+    let m = document.querySelector('meta[name="viewport"]');
+    if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+    if (m.content !== want) m.content = want;
+  })();
+
   const canvas = document.getElementById('gl');
   const overlay = document.getElementById('ov');
   const app = document.getElementById('app');
